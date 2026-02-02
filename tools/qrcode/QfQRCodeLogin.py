@@ -3,6 +3,7 @@ import os
 import time
 
 import execjs
+execjs.runtime_name = 'node'
 
 from tools.qrcode.QRCodeLogin import QRCodeLogin
 import requests
