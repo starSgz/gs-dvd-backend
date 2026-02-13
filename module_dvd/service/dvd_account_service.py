@@ -244,7 +244,6 @@ class CrawlAccountService:
                         'token': token
                     }
                 elif len(qrcode_result) == 3:
-                    # DdQRCodeLogin和XhsQRCodeLogin返回 (url, token, base64)
                     qrcode_url, token, qrcode_base64 = qrcode_result
                     return {
                         'qrcodeBase64': qrcode_base64,
@@ -279,10 +278,34 @@ class CrawlAccountService:
 
             # 检查扫码状态（非阻塞式检查）
             result = login_instance.listen_qrcode(status_model.token, blocking=False)
-
-            if result:
-                status = 0
+            
+            # 处理返回结果（可能是三元组或None）
+            if result is None:
+                return {
+                    'status': 'waiting',
+                    'message': '等待扫码',
+                }
+            
+            # 解包返回值
+            if len(result) == 3:
+                token, cookies, verify_info = result
+            else:
                 token, cookies = result
+                verify_info = None
+
+            if verify_info and isinstance(verify_info, dict):
+                # 处理短信/邮箱验证码的问题
+                return {
+                    'status': 'verify_code',
+                    'message': '需要身份验证',
+                    'verifyTicket': verify_info.get('verify_ticket'),
+                    'verifyWays': verify_info.get('verify_ways', []),
+                    'verifySceneDesc': verify_info.get('verify_scene_desc', ''),
+                    'cookies': cookies,  # 传递cookies供后续使用
+                }
+
+            elif token and cookies:
+                status = 0
                 # 检测是否真的登录完毕
                 login_status = login_instance.verify_login(cookies)
                 if login_status:
@@ -322,11 +345,140 @@ class CrawlAccountService:
                     'cookies': cookies,
                     'message': '登录成功',
                 }
-            else:
-                return {
-                    'status': 'waiting',
-                    'message': '等待扫码',
-                }
         except Exception as e:
             await query_db.rollback()
             raise ServiceException(message=f'检查二维码状态失败: {str(e)}')
+
+    @classmethod
+    async def send_verify_code_services(
+        cls, query_db: AsyncSession, verify_ticket: str, cookies: dict, platform_id: str, product_id: str
+    ) -> dict[str, Any]:
+        """
+        发送身份验证码service（支持短信/邮箱）
+
+        :param query_db: orm对象
+        :param verify_ticket: 验证票据
+        :param cookies: 当前会话cookies
+        :param platform_id: 平台ID
+        :param product_id: 产品ID
+        :return: 发送结果
+        """
+        try:
+            # 根据平台和产品获取对应的登录实例
+            login_instance = await QRCodeLoginFactory.get_login_instance_by_ids(
+                platform_id=platform_id,
+                product_id=product_id,
+                db_session=query_db
+            )
+
+            # 调用发送验证码方法
+            result = login_instance.get_sms_code(verify_ticket, cookies)
+            
+            if result:
+                return {
+                    'status': 'success',
+                    'message': '验证码已发送',
+                }
+            else:
+                raise ServiceException(message='发送验证码失败')
+
+        except Exception as e:
+            raise ServiceException(message=f'发送验证码失败: {str(e)}')
+
+    @classmethod
+    async def submit_verify_code_services(
+        cls, query_db: AsyncSession, verify_code: str, verify_ticket: str, 
+        cookies: dict, token: str, account_id: int, platform_id: str, product_id: str
+    ) -> dict[str, Any]:
+        """
+        提交身份验证码并完成登录service
+
+        :param query_db: orm对象
+        :param verify_code: 用户输入的验证码
+        :param verify_ticket: 验证票据
+        :param cookies: 当前会话cookies
+        :param token: 原始登录token
+        :param account_id: 账号ID
+        :param platform_id: 平台ID
+        :param product_id: 产品ID
+        :return: 登录结果
+        """
+        try:
+            # 根据平台和产品获取对应的登录实例
+            login_instance = await QRCodeLoginFactory.get_login_instance_by_ids(
+                platform_id=platform_id,
+                product_id=product_id,
+                db_session=query_db
+            )
+
+            # 提交验证码，获取新的ticket
+            new_ticket = login_instance.submit_code(verify_code, verify_ticket, cookies)
+            
+            if not new_ticket:
+                raise ServiceException(message='验证码验证失败')
+
+            # 使用新ticket继续登录流程
+            result = login_instance.listen_qrcode(token, blocking=False, verify_ticket=new_ticket)
+            
+            if result is None:
+                raise ServiceException(message='登录验证失败')
+            
+            # 解包返回值
+            if len(result) == 3:
+                final_token, final_cookies, verify_info = result
+            else:
+                final_token, final_cookies = result
+                verify_info = None
+            
+            # 如果还需要验证，说明验证码有问题
+            if verify_info:
+                raise ServiceException(message='验证失败，请重试')
+            
+            if not final_cookies:
+                raise ServiceException(message='获取登录信息失败')
+
+            # 检测是否真的登录完毕
+            status = 0
+            login_status = login_instance.verify_login(final_cookies)
+            if login_status:
+                status = 1
+
+            # 获取店铺名称
+            stores = login_instance.get_stores(final_cookies)
+
+            # 更新账号的cookies和店铺关联
+            account = await CrawlAccountDao.get_account_by_id(query_db, account_id)
+            if account:
+                # 更新cookies和状态
+                edit_data = {
+                    'id': account_id,
+                    'cookies': json.dumps(final_cookies),
+                    'status': status,  # 设置状态
+                    'update_time': datetime.now(),
+                }
+                await CrawlAccountDao.edit_account_dao(query_db, edit_data)
+
+                # 保存店铺关联：先删除旧关联，再批量插入新关联
+                if stores and isinstance(stores, list) and len(stores) > 0:
+                    await AccountStoreDao.delete_stores_by_account_id(query_db, account_id)
+                    await AccountStoreDao.add_store_batch(
+                        query_db,
+                        dvd_account_id=account_id,
+                        store_names=stores,
+                        platform_id=platform_id,
+                        product_id=product_id,
+                    )
+
+                await query_db.commit()
+
+            return {
+                'status': 'success',
+                'cookies': final_cookies,
+                'message': '登录成功',
+            }
+
+        except Exception as e:
+            await query_db.rollback()
+            raise ServiceException(message=f'提交验证码失败: {str(e)}')
+
+

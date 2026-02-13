@@ -18,6 +18,8 @@ from module_dvd.entity.vo.dvd_crawl_account_vo import (
     DeleteCrawlAccountModel,
     QRCodeRequestModel,
     QRCodeStatusModel,
+    SendVerifyCodeModel,
+    SubmitVerifyCodeModel,
 )
 from module_dvd.entity.vo.dvd_user_info_vo import DvdUserInfoModel
 from exceptions.exception import ServiceException
@@ -227,9 +229,75 @@ async def check_qrcode_status(
     else:
         raise ServiceException(message='账号ID不能为空')
 
-    status_result = await CrawlAccountService.check_qrcode_status_services(
-        query_db, status_model, platform_id, product_id
-    )
+    status_result = await CrawlAccountService.check_qrcode_status_services(query_db, status_model, platform_id, product_id)
     logger.info('检查二维码状态成功')
 
     return ResponseUtil.success(data=status_result)
+
+
+@dvd_account_controller.post(
+    '/qrcode/send_code',
+    summary='发送身份验证码接口',
+    description='用于发送身份验证码（短信/邮箱）',
+    response_model=DataResponseModel[dict],
+)
+async def send_verify_code(
+    request: Request,
+    send_model: SendVerifyCodeModel,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+) -> Response:
+    """
+    发送身份验证码
+    """
+    # 根据账号ID获取平台和产品ID
+    account = await CrawlAccountDao.get_account_by_id(query_db, send_model.account_id)
+    if not account:
+        raise ServiceException(message='账号不存在')
+    
+    platform_id = account.platform_id
+    product_id = account.product_id
+
+    send_result = await CrawlAccountService.send_verify_code_services(
+        query_db, send_model.verify_ticket, send_model.cookies, platform_id, product_id
+    )
+    logger.info('发送验证码成功')
+
+    return ResponseUtil.success(data=send_result)
+
+
+@dvd_account_controller.post(
+    '/qrcode/submit_code',
+    summary='提交身份验证码接口',
+    description='用于提交身份验证码并完成登录',
+    response_model=DataResponseModel[dict],
+)
+async def submit_verify_code(
+    request: Request,
+    submit_model: SubmitVerifyCodeModel,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+) -> Response:
+    """
+    提交身份验证码
+    """
+    # 根据账号ID获取平台和产品ID
+    account = await CrawlAccountDao.get_account_by_id(query_db, submit_model.account_id)
+    if not account:
+        raise ServiceException(message='账号不存在')
+    
+    platform_id = account.platform_id
+    product_id = account.product_id
+
+    submit_result = await CrawlAccountService.submit_verify_code_services(
+        query_db, 
+        submit_model.verify_code, 
+        submit_model.verify_ticket, 
+        submit_model.cookies,
+        submit_model.token,
+        submit_model.account_id,
+        platform_id, 
+        product_id
+    )
+    logger.info('提交验证码成功')
+
+    return ResponseUtil.success(data=submit_result)
+

@@ -126,7 +126,7 @@ class QfQRCodeLogin(QRCodeLogin):
                         print(f"完整cookies数量: {len(all_cookies)}")
                         print(f"完整cookies内容: {all_cookies}")
                         
-                        return token, all_cookies
+                        return token, all_cookies, None
                     time.sleep(0.5)
             else:
                 # 非阻塞模式：单次检查

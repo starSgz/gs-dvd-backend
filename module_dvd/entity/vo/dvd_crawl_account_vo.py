@@ -117,3 +117,29 @@ class QRCodeRequestModel(BaseModel):
 
     platform_id: str = Field(description='平台ID')
     product_id: str = Field(description='产品ID')
+
+
+class SendVerifyCodeModel(BaseModel):
+    """
+    发送验证码请求模型（支持短信/邮箱）
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    verify_ticket: str = Field(description='验证票据')
+    cookies: dict = Field(description='当前会话cookies')
+    account_id: int = Field(description='账号ID')
+
+
+class SubmitVerifyCodeModel(BaseModel):
+    """
+    提交验证码请求模型
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    verify_code: str = Field(description='验证码（短信/邮箱）')
+    verify_ticket: str = Field(description='验证票据')
+    cookies: dict = Field(description='当前会话cookies')
+    token: str = Field(description='原始登录token')
+    account_id: int = Field(description='账号ID')
