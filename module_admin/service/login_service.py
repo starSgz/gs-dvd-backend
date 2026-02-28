@@ -258,16 +258,7 @@ class LoginService:
                 request, query_user.get('user_basic_info').pwd_update_date
             )
 
-            # 计算卡密到期时间
-            expire_time = None
-            user_access_key = query_user.get('user_basic_info').access_key
-            if user_access_key:
-                access_key_info = await AccessKeyDao.get_access_key_detail_by_key(query_db, user_access_key)
-                if access_key_info and access_key_info.used_time and access_key_info.duration_hours:
-                    expire_time = access_key_info.used_time + timedelta(hours=access_key_info.duration_hours)
-
             user_info_data = CamelCaseUtil.transform_result(query_user.get('user_basic_info'))
-            user_info_data['expire_time'] = expire_time
 
             current_user = CurrentUserModel(
                 permissions=permissions,

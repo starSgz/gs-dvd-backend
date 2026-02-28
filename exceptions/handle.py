@@ -8,7 +8,7 @@ from exceptions.exception import (
     ModelValidatorException,
     PermissionException,
     ServiceException,
-    ServiceWarning,
+    ServiceWarning, AccessKeyException,
 )
 from utils.log_util import logger
 from utils.response_util import JSONResponse, ResponseUtil, jsonable_encoder
@@ -70,3 +70,9 @@ def handle_exception(app: FastAPI) -> None:
     async def exception_handler(request: Request, exc: Exception) -> Response:
         logger.exception(exc)
         return ResponseUtil.error(msg=str(exc))
+
+    # 处理其他http请求异常
+    @app.exception_handler(AccessKeyException)
+    async def access_key_exception_handler(request: Request, exc: AccessKeyException) -> Response:
+        logger.error(exc.message)
+        return ResponseUtil.forbidden(data=exc.data, msg=exc.message)
