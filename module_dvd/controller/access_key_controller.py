@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.annotation.log_annotation import Log
 from common.aspect.db_seesion import DBSessionDependency
-from common.aspect.interface_auth import UserInterfaceAuthDependency
+from common.aspect.interface_auth import UserInterfaceAuthDependency, AccessKeyInterfaceAuthDependency
 from common.aspect.pre_auth import CurrentUserDependency, PreAuthDependency
 from module_admin.entity.vo.user_vo import CurrentUserModel
 from common.enums import BusinessType
@@ -29,12 +29,13 @@ access_key_controller = APIRouterPro(prefix='/dvd/access-key', order_num=10, tag
     summary='获取卡密分页列表接口',
     description='用于获取卡密分页列表',
     response_model=PageResponseModel[AccessKeyModel],
-    dependencies=[UserInterfaceAuthDependency('dvd:accessKey:list')],
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:accessKey:list')],
 )
 async def get_access_key_list(
     request: Request,
     access_key_page_query: Annotated[AccessKeyPageQueryModel, Query()],
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    current_user: Annotated[CurrentUserModel, CurrentUserDependency()]
 ) -> Response:
     # 获取分页数据
     access_key_page_query_result = await AccessKeyService.get_access_key_list_services(
