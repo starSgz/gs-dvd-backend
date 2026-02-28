@@ -23,11 +23,7 @@ from module_dvd.service.access_key_service import AccessKeyService
 from utils.log_util import logger
 from utils.response_util import ResponseUtil
 
-access_key_controller = APIRouterPro(
-    prefix='/dvd/access-key', order_num=10, tags=['DVD配置-卡密管理'], dependencies=[PreAuthDependency()]
-)
-
-
+access_key_controller = APIRouterPro(prefix='/dvd/access-key', order_num=10, tags=['DVD配置-卡密管理'], dependencies=[PreAuthDependency()])
 @access_key_controller.get(
     '/list',
     summary='获取卡密分页列表接口',

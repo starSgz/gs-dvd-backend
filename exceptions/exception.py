@@ -30,6 +30,15 @@ class PermissionException(Exception):
         self.data = data
         self.message = message
 
+class AccessKeyException(Exception):
+    """
+    自定义权限异常AccessKeyException
+    """
+
+    def __init__(self, data: Optional[str] = None, message: Optional[str] = None) -> None:
+        self.data = data
+        self.message = message
+
 
 class ServiceException(Exception):
     """

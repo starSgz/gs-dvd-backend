@@ -258,7 +258,7 @@ async def send_verify_code(
     product_id = account.product_id
 
     send_result = await CrawlAccountService.send_verify_code_services(
-        query_db, send_model.verify_ticket, send_model.cookies, platform_id, product_id
+        query_db, send_model.verify_ticket, send_model.token, platform_id, product_id
     )
     logger.info('发送验证码成功')
 
@@ -288,14 +288,13 @@ async def submit_verify_code(
     product_id = account.product_id
 
     submit_result = await CrawlAccountService.submit_verify_code_services(
-        query_db, 
-        submit_model.verify_code, 
-        submit_model.verify_ticket, 
-        submit_model.cookies,
+        query_db,
+        submit_model.verify_code,
+        submit_model.verify_ticket,
         submit_model.token,
         submit_model.account_id,
-        platform_id, 
-        product_id
+        platform_id,
+        product_id,
     )
     logger.info('提交验证码成功')
 

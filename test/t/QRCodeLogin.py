@@ -15,13 +15,10 @@ class QRCodeLogin:
         """
         raise NotImplemented
 
-    def listen_qrcode(self, token: str, blocking: bool = False, verify_ticket: str = None):
+    def listen_qrcode(self,token, blocking=False):
         """
-        监听响应接口（单次非阻塞检查）
-        :param token: 登录 token
-        :param blocking: 保留参数
-        :param verify_ticket: 身份验证票据（可选）
-        :return: (token, cookies, verify_info) 或 None
+        监听响应接口
+        :return:
         """
         raise NotImplemented
 

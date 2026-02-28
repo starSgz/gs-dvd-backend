@@ -294,14 +294,13 @@ class CrawlAccountService:
                 verify_info = None
 
             if verify_info and isinstance(verify_info, dict):
-                # 处理短信/邮箱验证码的问题
+                # 需要短信/邮箱验证，session 已保存在服务端，前端只需携带 token 继续后续步骤
                 return {
                     'status': 'verify_code',
                     'message': '需要身份验证',
                     'verifyTicket': verify_info.get('verify_ticket'),
                     'verifyWays': verify_info.get('verify_ways', []),
                     'verifySceneDesc': verify_info.get('verify_scene_desc', ''),
-                    'cookies': cookies,  # 传递cookies供后续使用
                 }
 
             elif token and cookies:
@@ -351,14 +350,14 @@ class CrawlAccountService:
 
     @classmethod
     async def send_verify_code_services(
-        cls, query_db: AsyncSession, verify_ticket: str, cookies: dict, platform_id: str, product_id: str
+        cls, query_db: AsyncSession, verify_ticket: str, token: str, platform_id: str, product_id: str
     ) -> dict[str, Any]:
         """
         发送身份验证码service（支持短信/邮箱）
 
         :param query_db: orm对象
         :param verify_ticket: 验证票据
-        :param cookies: 当前会话cookies
+        :param token: 登录 token，用于检索服务端 session
         :param platform_id: 平台ID
         :param product_id: 产品ID
         :return: 发送结果
@@ -371,9 +370,9 @@ class CrawlAccountService:
                 db_session=query_db
             )
 
-            # 调用发送验证码方法
-            result = login_instance.get_sms_code(verify_ticket, cookies)
-            
+            # 使用 token 检索已存储的 session 发送验证码
+            result = login_instance.get_sms_code(verify_ticket, token)
+
             if result:
                 return {
                     'status': 'success',
@@ -387,17 +386,17 @@ class CrawlAccountService:
 
     @classmethod
     async def submit_verify_code_services(
-        cls, query_db: AsyncSession, verify_code: str, verify_ticket: str, 
-        cookies: dict, token: str, account_id: int, platform_id: str, product_id: str
+        cls, query_db: AsyncSession, verify_code: str, verify_ticket: str,
+        token: str, account_id: int, platform_id: str, product_id: str
     ) -> dict[str, Any]:
         """
-        提交身份验证码并完成登录service
+        提交身份验证码并完成登录service。
+        submit_code 内部已完成"提交验证码 -> 轮询 -> 重定向"全流程，直接返回最终 cookies。
 
         :param query_db: orm对象
         :param verify_code: 用户输入的验证码
         :param verify_ticket: 验证票据
-        :param cookies: 当前会话cookies
-        :param token: 原始登录token
+        :param token: 登录 token，用于检索服务端 session
         :param account_id: 账号ID
         :param platform_id: 平台ID
         :param product_id: 产品ID
@@ -411,54 +410,41 @@ class CrawlAccountService:
                 db_session=query_db
             )
 
-            # 提交验证码，获取新的ticket
-            new_ticket = login_instance.submit_code(verify_code, verify_ticket, cookies)
-            
-            if not new_ticket:
-                raise ServiceException(message='验证码验证失败')
+            # submit_code 内部：提交验证码 -> 轮询 check_qrconnect -> 跟随重定向 -> 返回 cookies
+            final_cookies = login_instance.submit_code(verify_code, verify_ticket, token)
 
-            # 使用新ticket继续登录流程
-            result = login_instance.listen_qrcode(token, blocking=False, verify_ticket=new_ticket)
-            
-            if result is None:
-                raise ServiceException(message='登录验证失败')
-            
-            # 解包返回值
-            if len(result) == 3:
-                final_token, final_cookies, verify_info = result
-            else:
-                final_token, final_cookies = result
-                verify_info = None
-            
-            # 如果还需要验证，说明验证码有问题
-            if verify_info:
-                raise ServiceException(message='验证失败，请重试')
-            
             if not final_cookies:
                 raise ServiceException(message='获取登录信息失败')
 
-            # 检测是否真的登录完毕
+            # 登录完成后清理服务端 session
+            login_instance.cleanup_session(token)
+
+            # 校验登录状态
             status = 0
-            login_status = login_instance.verify_login(final_cookies)
-            if login_status:
-                status = 1
+            try:
+                if login_instance.verify_login(final_cookies):
+                    status = 1
+            except Exception:
+                pass
 
             # 获取店铺名称
-            stores = login_instance.get_stores(final_cookies)
+            stores = []
+            try:
+                stores = login_instance.get_stores(final_cookies)
+            except Exception:
+                pass
 
-            # 更新账号的cookies和店铺关联
+            # 更新账号的 cookies 和店铺关联
             account = await CrawlAccountDao.get_account_by_id(query_db, account_id)
             if account:
-                # 更新cookies和状态
                 edit_data = {
                     'id': account_id,
                     'cookies': json.dumps(final_cookies),
-                    'status': status,  # 设置状态
+                    'status': status,
                     'update_time': datetime.now(),
                 }
                 await CrawlAccountDao.edit_account_dao(query_db, edit_data)
 
-                # 保存店铺关联：先删除旧关联，再批量插入新关联
                 if stores and isinstance(stores, list) and len(stores) > 0:
                     await AccountStoreDao.delete_stores_by_account_id(query_db, account_id)
                     await AccountStoreDao.add_store_batch(

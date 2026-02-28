@@ -12,7 +12,7 @@ class QRCodeLoginType(str, Enum):
     """
     DOUDIAN = "doudian"  # 抖店
     XIAOHONGSHU = "xiaohongshu"  # 小红书
-    QIANFAN = "QIANFAN"  # 小红书
+    QIANFAN = "qianfan"  # 千帆
 
 
 class QRCodeLoginFactory:

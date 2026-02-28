@@ -127,7 +127,7 @@ class SendVerifyCodeModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel)
 
     verify_ticket: str = Field(description='验证票据')
-    cookies: dict = Field(description='当前会话cookies')
+    token: str = Field(description='登录token，用于检索服务端session')
     account_id: int = Field(description='账号ID')
 
 
@@ -140,6 +140,5 @@ class SubmitVerifyCodeModel(BaseModel):
 
     verify_code: str = Field(description='验证码（短信/邮箱）')
     verify_ticket: str = Field(description='验证票据')
-    cookies: dict = Field(description='当前会话cookies')
-    token: str = Field(description='原始登录token')
+    token: str = Field(description='原始登录token，用于检索服务端session')
     account_id: int = Field(description='账号ID')
