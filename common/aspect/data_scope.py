@@ -7,6 +7,7 @@ from common.context import RequestContext
 from config.database import Base
 from module_admin.entity.do.dept_do import SysDept
 from module_admin.entity.do.role_do import SysRoleDept
+from module_admin.entity.do.user_do import SysUser
 from utils.dependency_util import DependencyUtil
 
 
@@ -109,6 +110,39 @@ def DataScopeDependency(  # noqa: N802
     :param query_alias: 所要查询表对应的sqlalchemy模型类，不可为空
     :param user_alias: 用户id字段别名，默认为'user_id'
     :param dept_alias: 部门id字段别名，默认为'dept_id'
-    :return: 当前用户数据权限依赖
+    :return: 当前用户大屏数据权限依赖
     """
     return Depends(GetDataScope(query_alias, user_alias, dept_alias))
+
+
+
+class GetDvdDataScope:
+    """
+    获取当前用户数据大屏权限对应的查询sql语句。
+
+    管理员返回 None（不过滤），有部门的用户返回同部门所有 user_id 子查询，
+    无部门的用户返回仅自身 user_id 子查询。
+    """
+
+    def __call__(self, request: Request):
+        DependencyUtil.check_exclude_routes(request, err_msg='当前路由不在认证规则内，不可使用GetDvdDataScope依赖项')
+        current_user = RequestContext.get_current_user()
+        user_id = current_user.user.user_id
+        dept_id = current_user.user.dept_id
+
+        if current_user.user.admin:
+            return None
+
+        if dept_id:
+            return select(SysUser.user_id).where(SysUser.dept_id == dept_id)
+        else:
+            return select(SysUser.user_id).where(SysUser.user_id == user_id)
+
+
+def DvdDataScopeDependency() -> params.Depends:  # noqa: N802
+    """
+    当前用户数据大屏权限依赖
+
+    :return: 当前用户数据大屏权限依赖（Optional[Select]，管理员为 None）
+    """
+    return Depends(GetDvdDataScope())

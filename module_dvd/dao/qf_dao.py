@@ -16,25 +16,31 @@ class QfOverviewDao:
     """
 
     @classmethod
-    async def get_store_list(cls, db: AsyncSession) -> list[dict[str, Any]]:
+    async def get_store_list(cls, db: AsyncSession, dvd_data_scope=None) -> list[dict[str, Any]]:
         """
         获取店铺列表
         
         :param db: orm对象
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 店铺列表
         """
-        result = await db.execute(
+        query = (
             select(QfRealtimeMetrics.store_name)
             .distinct()
             .where(QfRealtimeMetrics.store_name.isnot(None))
-            .order_by(QfRealtimeMetrics.store_name)
         )
-        
+        if dvd_data_scope is not None:
+            query = query.where(QfRealtimeMetrics.bind_user_id.in_(dvd_data_scope))
+        query = query.order_by(QfRealtimeMetrics.store_name)
+
+        result = await db.execute(query)
         rows = result.scalars().all()
         return [{'storeName': store_name} for store_name in rows]
 
     @classmethod
-    async def get_realtime_metrics(cls, db: AsyncSession, target_date: date = None, store_name: str = None) -> dict[str, Any]:
+    async def get_realtime_metrics(
+        cls, db: AsyncSession, target_date: date = None, store_name: str = None, dvd_data_scope=None
+    ) -> dict[str, Any]:
         """
         获取实时指标（从 qf_realtime_metrics 表获取 GMV、订单量、商品访问量等）
         每天每个店铺只有一条数据，直接累加即可
@@ -42,12 +48,12 @@ class QfOverviewDao:
         :param db: orm对象
         :param target_date: 目标日期
         :param store_name: 店铺名称
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 汇总指标数据
         """
         if target_date is None:
             target_date = date.today()
 
-        # 构建查询：直接累加当天所有店铺的数据
         query = select(
             func.sum(QfRealtimeMetrics.pay_amount).label('total_gmv'),
             func.sum(QfRealtimeMetrics.pay_order_count).label('total_orders'),
@@ -58,6 +64,8 @@ class QfOverviewDao:
 
         if store_name:
             query = query.where(QfRealtimeMetrics.store_name == store_name)
+        if dvd_data_scope is not None:
+            query = query.where(QfRealtimeMetrics.bind_user_id.in_(dvd_data_scope))
 
         result = await db.execute(query)
         row = result.first()
@@ -73,19 +81,21 @@ class QfOverviewDao:
         }
 
     @classmethod
-    async def get_realtime_trend(cls, db: AsyncSession, target_date: date = None, store_name: str = None) -> dict[str, Any]:
+    async def get_realtime_trend(
+        cls, db: AsyncSession, target_date: date = None, store_name: str = None, dvd_data_scope=None
+    ) -> dict[str, Any]:
         """
         获取实时GMV走势（24小时数据）
         
         :param db: orm对象
         :param target_date: 目标日期
         :param store_name: 店铺名称
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 实时趋势数据
         """
         if target_date is None:
             target_date = date.today()
 
-        # 构建查询
         query = select(
             QfRealtimeTrend.dtm,
             func.sum(QfRealtimeTrend.pay_net_amt).label('total_gmv'),
@@ -93,22 +103,21 @@ class QfOverviewDao:
             func.sum(QfRealtimeTrend.card_click_cnt).label('total_card_clicks'),
         ).where(QfRealtimeTrend.collect_date == target_date)
 
-        # 如果指定了店铺名称，添加筛选条件
         if store_name:
             query = query.where(QfRealtimeTrend.store_name == store_name)
+        if dvd_data_scope is not None:
+            query = query.where(QfRealtimeTrend.bind_user_id.in_(dvd_data_scope))
 
         query = query.group_by(QfRealtimeTrend.dtm).order_by(QfRealtimeTrend.dtm)
 
         result = await db.execute(query)
         rows = result.all()
 
-        # 初始化24小时数据
         time_labels = [f'{i:02d}:00' for i in range(24)]
         gmv_data = [0.0] * 24
         order_data = [0] * 24
         card_click_data = [0] * 24
 
-        # 填充实际数据
         for row in rows:
             if row.dtm and row.dtm.isdigit():
                 hour = int(row.dtm)
@@ -125,7 +134,9 @@ class QfOverviewDao:
         }
 
     @classmethod
-    async def get_top_stores(cls, db: AsyncSession, target_date: date = None, sort_by: str = 'orders', limit: int = 10) -> list[dict[str, Any]]:
+    async def get_top_stores(
+        cls, db: AsyncSession, target_date: date = None, sort_by: str = 'orders', limit: int = 10, dvd_data_scope=None
+    ) -> list[dict[str, Any]]:
         """
         获取热销店铺TOP排行
         
@@ -133,12 +144,12 @@ class QfOverviewDao:
         :param target_date: 目标日期
         :param sort_by: 排序方式，'orders'按订单量，'sales'按销售额
         :param limit: 返回数量
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 店铺排行列表
         """
         if target_date is None:
             target_date = date.today()
 
-        # 构建查询
         query = select(
             QfRealtimeTrend.store_name,
             func.sum(QfRealtimeTrend.deal_order_cnt).label('order_count'),
@@ -146,12 +157,16 @@ class QfOverviewDao:
         ).where(
             QfRealtimeTrend.collect_date == target_date,
             QfRealtimeTrend.store_name.isnot(None)
-        ).group_by(QfRealtimeTrend.store_name)
+        )
 
-        # 根据排序方式选择排序字段
+        if dvd_data_scope is not None:
+            query = query.where(QfRealtimeTrend.bind_user_id.in_(dvd_data_scope))
+
+        query = query.group_by(QfRealtimeTrend.store_name)
+
         if sort_by == 'orders':
             query = query.order_by(desc('order_count'))
-        else:  # sales
+        else:
             query = query.order_by(desc('sales_amount'))
         
         query = query.limit(limit)
@@ -170,7 +185,9 @@ class QfOverviewDao:
         ]
 
     @classmethod
-    async def get_realtime_orders(cls, db: AsyncSession, target_date: date = None, store_name: str = None, limit: int = 20) -> list[dict[str, Any]]:
+    async def get_realtime_orders(
+        cls, db: AsyncSession, target_date: date = None, store_name: str = None, limit: int = 20, dvd_data_scope=None
+    ) -> list[dict[str, Any]]:
         """
         获取实时订单列表（按package_id分组统计）
 
@@ -178,12 +195,11 @@ class QfOverviewDao:
         :param target_date: 目标日期，默认为今天
         :param store_name: 店铺名称筛选
         :param limit: 返回数量
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 订单列表
         """
-        # 如果未指定日期，使用今天的日期
         query_date = target_date if target_date else date.today()
 
-        # 构建查询 - 按 package_id 分组，累加金额（因为一个订单可能有多个SKU）
         query = select(
             QfOrderList.package_id,
             QfOrderList.store_name,
@@ -191,15 +207,16 @@ class QfOverviewDao:
             func.sum(QfOrderList.sku_total_paid_amount).label('total_amount'),
             func.max(QfOrderList.update_time).label('latest_update'),
         ).where(
-            QfOrderList.collect_date == query_date,  # 查询指定日期的数据
+            QfOrderList.collect_date == query_date,
             QfOrderList.package_id.isnot(None),
             QfOrderList.sku_total_paid_amount.isnot(None),
             QfOrderList.sku_total_paid_amount > 0,
         )
 
-        # 如果指定了店铺名称，添加筛选条件
         if store_name:
             query = query.where(QfOrderList.store_name == store_name)
+        if dvd_data_scope is not None:
+            query = query.where(QfOrderList.bind_user_id.in_(dvd_data_scope))
 
         query = (
             query.group_by(
@@ -225,23 +242,29 @@ class QfOverviewDao:
         return orders
 
     @classmethod
-    async def get_dashboard_metrics(cls, db: AsyncSession, target_date: date = None) -> dict[str, Any]:
+    async def get_dashboard_metrics(
+        cls, db: AsyncSession, target_date: date = None, dvd_data_scope=None
+    ) -> dict[str, Any]:
         """
         获取大屏核心指标
         
         :param db: orm对象
         :param target_date: 目标日期，默认为今天
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 核心指标字典
         """
         if target_date is None:
             target_date = date.today()
 
-        result = await db.execute(
-            select(
-                func.sum(QfOverview.pay_pkg_cnt).label('total_orders'),
-                func.sum(QfOverview.pay_gmv).label('total_gmv'),
-            ).where(QfOverview.collect_date == target_date)
-        )
+        query = select(
+            func.sum(QfOverview.pay_pkg_cnt).label('total_orders'),
+            func.sum(QfOverview.pay_gmv).label('total_gmv'),
+        ).where(QfOverview.collect_date == target_date)
+
+        if dvd_data_scope is not None:
+            query = query.where(QfOverview.bind_user_id.in_(dvd_data_scope))
+
+        result = await db.execute(query)
         row = result.first()
 
         return {
@@ -250,30 +273,37 @@ class QfOverviewDao:
         }
 
     @classmethod
-    async def get_store_sales_rank(cls, db: AsyncSession, target_date: date = None, limit: int = 10) -> list[dict[str, Any]]:
+    async def get_store_sales_rank(
+        cls, db: AsyncSession, target_date: date = None, limit: int = 10, dvd_data_scope=None
+    ) -> list[dict[str, Any]]:
         """
         获取店铺销售排行
         
         :param db: orm对象
         :param target_date: 目标日期
         :param limit: 返回数量
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 店铺排行列表
         """
         if target_date is None:
             target_date = date.today()
 
-        result = await db.execute(
-            select(
-                QfOverview.store_name,
-                func.sum(QfOverview.pay_pkg_cnt).label('order_count'),
-                func.sum(QfOverview.pay_gmv).label('sales_amount'),
-            )
-            .where(QfOverview.collect_date == target_date)
-            .group_by(QfOverview.store_name)
+        query = select(
+            QfOverview.store_name,
+            func.sum(QfOverview.pay_pkg_cnt).label('order_count'),
+            func.sum(QfOverview.pay_gmv).label('sales_amount'),
+        ).where(QfOverview.collect_date == target_date)
+
+        if dvd_data_scope is not None:
+            query = query.where(QfOverview.bind_user_id.in_(dvd_data_scope))
+
+        query = (
+            query.group_by(QfOverview.store_name)
             .order_by(desc('sales_amount'))
             .limit(limit)
         )
 
+        result = await db.execute(query)
         rows = result.all()
         return [
             {
@@ -286,33 +316,37 @@ class QfOverviewDao:
         ]
 
     @classmethod
-    async def get_channel_sales_data(cls, db: AsyncSession, target_date: date = None) -> list[dict[str, Any]]:
+    async def get_channel_sales_data(
+        cls, db: AsyncSession, target_date: date = None, dvd_data_scope=None
+    ) -> list[dict[str, Any]]:
         """
         获取渠道销售数据（笔记、直播、商卡）
         
         :param db: orm对象
         :param target_date: 目标日期
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 渠道销售数据列表
         """
         if target_date is None:
             target_date = date.today()
 
-        result = await db.execute(
-            select(
-                func.sum(QfOverview.note_pay_pkg_cnt).label('note_count'),
-                func.sum(QfOverview.note_pay_gmv).label('note_gmv'),
-                func.sum(QfOverview.live_pay_pkg_cnt).label('live_count'),
-                func.sum(QfOverview.live_pay_gmv).label('live_gmv'),
-                func.sum(QfOverview.card_pay_pkg_cnt).label('card_count'),
-                func.sum(QfOverview.card_pay_gmv).label('card_gmv'),
-            ).where(QfOverview.collect_date == target_date)
-        )
+        query = select(
+            func.sum(QfOverview.note_pay_pkg_cnt).label('note_count'),
+            func.sum(QfOverview.note_pay_gmv).label('note_gmv'),
+            func.sum(QfOverview.live_pay_pkg_cnt).label('live_count'),
+            func.sum(QfOverview.live_pay_gmv).label('live_gmv'),
+            func.sum(QfOverview.card_pay_pkg_cnt).label('card_count'),
+            func.sum(QfOverview.card_pay_gmv).label('card_gmv'),
+        ).where(QfOverview.collect_date == target_date)
 
+        if dvd_data_scope is not None:
+            query = query.where(QfOverview.bind_user_id.in_(dvd_data_scope))
+
+        result = await db.execute(query)
         row = result.first()
         
         channels = []
         
-        # 笔记数据
         note_count = int(row.note_count or 0)
         note_gmv = float(row.note_gmv or 0)
         if note_count > 0:
@@ -323,7 +357,6 @@ class QfOverviewDao:
                 'avg_price': round(note_gmv / note_count, 2),
             })
         
-        # 直播数据
         live_count = int(row.live_count or 0)
         live_gmv = float(row.live_gmv or 0)
         if live_count > 0:
@@ -334,7 +367,6 @@ class QfOverviewDao:
                 'avg_price': round(live_gmv / live_count, 2),
             })
         
-        # 商卡数据
         card_count = int(row.card_count or 0)
         card_gmv = float(row.card_gmv or 0)
         if card_count > 0:
@@ -348,25 +380,28 @@ class QfOverviewDao:
         return channels
 
     @classmethod
-    async def get_recent_orders(cls, db: AsyncSession, limit: int = 20) -> list[dict[str, Any]]:
+    async def get_recent_orders(cls, db: AsyncSession, limit: int = 20, dvd_data_scope=None) -> list[dict[str, Any]]:
         """
         获取最近订单（模拟数据，因为实际表没有订单明细）
         
         :param db: orm对象
         :param limit: 返回数量
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 订单列表
         """
-        result = await db.execute(
-            select(
-                QfOverview.store_name,
-                QfOverview.pay_gmv,
-                QfOverview.dtm,
-                QfOverview.collect_date,
-            )
-            .order_by(desc(QfOverview.collect_date))
-            .limit(limit)
+        query = select(
+            QfOverview.store_name,
+            QfOverview.pay_gmv,
+            QfOverview.dtm,
+            QfOverview.collect_date,
         )
 
+        if dvd_data_scope is not None:
+            query = query.where(QfOverview.bind_user_id.in_(dvd_data_scope))
+
+        query = query.order_by(desc(QfOverview.collect_date)).limit(limit)
+
+        result = await db.execute(query)
         rows = result.all()
         orders = []
         for row in rows:
@@ -381,28 +416,34 @@ class QfOverviewDao:
         return orders[:limit]
 
     @classmethod
-    async def get_trend_data(cls, db: AsyncSession, days: int = 7) -> dict[str, Any]:
+    async def get_trend_data(cls, db: AsyncSession, days: int = 7, dvd_data_scope=None) -> dict[str, Any]:
         """
         获取趋势数据（按天统计）
         
         :param db: orm对象
         :param days: 天数
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 趋势数据
         """
-        result = await db.execute(
-            select(
-                QfOverview.collect_date,
-                func.sum(QfOverview.pay_gmv).label('total_gmv'),
-                func.sum(QfOverview.pay_pkg_cnt).label('total_orders'),
-                func.sum(QfOverview.note_pay_gmv).label('note_gmv'),
-                func.sum(QfOverview.live_pay_gmv).label('live_gmv'),
-                func.sum(QfOverview.card_pay_gmv).label('card_gmv'),
-            )
-            .group_by(QfOverview.collect_date)
+        query = select(
+            QfOverview.collect_date,
+            func.sum(QfOverview.pay_gmv).label('total_gmv'),
+            func.sum(QfOverview.pay_pkg_cnt).label('total_orders'),
+            func.sum(QfOverview.note_pay_gmv).label('note_gmv'),
+            func.sum(QfOverview.live_pay_gmv).label('live_gmv'),
+            func.sum(QfOverview.card_pay_gmv).label('card_gmv'),
+        )
+
+        if dvd_data_scope is not None:
+            query = query.where(QfOverview.bind_user_id.in_(dvd_data_scope))
+
+        query = (
+            query.group_by(QfOverview.collect_date)
             .order_by(QfOverview.collect_date)
             .limit(days)
         )
 
+        result = await db.execute(query)
         rows = result.all()
         
         time_labels = []
@@ -430,38 +471,44 @@ class QfOverviewDao:
         }
 
     @classmethod
-    async def get_sku_sales_data(cls, db: AsyncSession, target_date: date = None, sort_by: str = 'sales') -> list[dict[str, Any]]:
+    async def get_sku_sales_data(
+        cls, db: AsyncSession, target_date: date = None, sort_by: str = 'sales', dvd_data_scope=None
+    ) -> list[dict[str, Any]]:
         """
         获取SKU销售数据（按SKU统计销量和销售额）
         
         :param db: orm对象
         :param target_date: 目标日期，默认为今天
         :param sort_by: 排序方式，'sales'按销量，'amount'按销售额
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: SKU销售数据列表
         """
         if target_date is None:
             target_date = date.today()
 
-        # 构建查询 - 按 sku_id 和 sku_name 分组统计
         query = select(
             QfOrderList.sku_id,
             QfOrderList.sku_name,
-            func.count(QfOrderList.id).label('sales_count'),  # 销量：记录数量
-            func.sum(QfOrderList.sku_total_paid_amount).label('sales_amount'),  # 销售额：累计金额
+            func.count(QfOrderList.id).label('sales_count'),
+            func.sum(QfOrderList.sku_total_paid_amount).label('sales_amount'),
         ).where(
             QfOrderList.collect_date == target_date,
             QfOrderList.sku_id.isnot(None),
             QfOrderList.sku_total_paid_amount.isnot(None),
             QfOrderList.sku_total_paid_amount > 0,
-        ).group_by(
+        )
+
+        if dvd_data_scope is not None:
+            query = query.where(QfOrderList.bind_user_id.in_(dvd_data_scope))
+
+        query = query.group_by(
             QfOrderList.sku_id,
             QfOrderList.sku_name,
         )
 
-        # 根据排序方式选择排序字段
         if sort_by == 'sales':
             query = query.order_by(desc('sales_count'))
-        else:  # amount
+        else:
             query = query.order_by(desc('sales_amount'))
 
         result = await db.execute(query)
@@ -476,4 +523,3 @@ class QfOverviewDao:
             }
             for row in rows
         ]
-

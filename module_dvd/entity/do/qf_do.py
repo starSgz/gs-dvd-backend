@@ -15,6 +15,7 @@ class QfOverview(Base):
     __table_args__ = {'comment': '千帆数据概览表'}
 
     id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
     collect_date = Column(Date, nullable=False, comment='采集时间')
     store_name = Column(String(255), nullable=True, comment='店铺名称')
     store_id = Column(String(255), nullable=True, comment='店铺id')
