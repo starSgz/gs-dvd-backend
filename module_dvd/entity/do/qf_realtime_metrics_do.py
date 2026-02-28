@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CHAR, Column, Date, DateTime, String, DECIMAL, text
+from sqlalchemy import CHAR, BigInteger, Column, Date, DateTime, String, DECIMAL, text
 
 from config.database import Base
 
@@ -15,6 +15,7 @@ class QfRealtimeMetrics(Base):
     __table_args__ = {'comment': '千帆实时指标表'}
 
     id = Column(CHAR(32), primary_key=True, nullable=False)
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
     collect_date = Column(Date, nullable=False, comment='采集日期')
     store_name = Column(String(255), nullable=True, comment='店铺名称')
     store_id = Column(String(255), nullable=True, comment='店铺id')

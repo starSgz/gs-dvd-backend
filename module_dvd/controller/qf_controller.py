@@ -4,6 +4,7 @@ from typing import Annotated, Optional
 from fastapi import Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from common.aspect.data_scope import DvdDataScopeDependency
 from common.aspect.db_seesion import DBSessionDependency
 from common.router import APIRouterPro
 from common.vo import DataResponseModel
@@ -12,6 +13,7 @@ from utils.log_util import logger
 from utils.response_util import ResponseUtil
 
 qf_controller = APIRouterPro(prefix='/dvd/qf', order_num=99, tags=['数据大屏-千帆'])
+
 
 @qf_controller.get(
     '/dashboard/store-list',
@@ -22,11 +24,12 @@ qf_controller = APIRouterPro(prefix='/dvd/qf', order_num=99, tags=['数据大屏
 async def get_store_list(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
 ) -> Response:
     """
     获取店铺列表
     """
-    store_list = await QfOverviewService.get_store_list_service(query_db)
+    store_list = await QfOverviewService.get_store_list_service(query_db, dvd_data_scope)
     logger.info('获取店铺列表成功')
 
     return ResponseUtil.success(data=store_list)
@@ -41,6 +44,7 @@ async def get_store_list(
 async def get_realtime_metrics(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     store_name: Annotated[Optional[str], Query(description='店铺名称，用于筛选')] = None,
 ) -> Response:
@@ -48,7 +52,7 @@ async def get_realtime_metrics(
     获取实时指标
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    metrics_data = await QfOverviewService.get_realtime_metrics_service(query_db, date_obj, store_name)
+    metrics_data = await QfOverviewService.get_realtime_metrics_service(query_db, date_obj, store_name, dvd_data_scope)
     logger.info('获取实时指标成功')
 
     return ResponseUtil.success(data=metrics_data)
@@ -63,6 +67,7 @@ async def get_realtime_metrics(
 async def get_realtime_trend(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     store_name: Annotated[Optional[str], Query(description='店铺名称，用于筛选')] = None,
 ) -> Response:
@@ -70,7 +75,7 @@ async def get_realtime_trend(
     获取实时GMV走势
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    trend_data = await QfOverviewService.get_realtime_trend_service(query_db, date_obj, store_name)
+    trend_data = await QfOverviewService.get_realtime_trend_service(query_db, date_obj, store_name, dvd_data_scope)
     logger.info('获取实时走势数据成功')
 
     return ResponseUtil.success(data=trend_data)
@@ -85,6 +90,7 @@ async def get_realtime_trend(
 async def get_top_stores(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     sort_by: Annotated[str, Query(description='排序方式：orders-按订单量，sales-按销售额')] = 'orders',
     limit: Annotated[int, Query(description='返回数量', ge=1, le=100)] = 10,
@@ -93,7 +99,7 @@ async def get_top_stores(
     获取热销店铺TOP排行
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    top_stores = await QfOverviewService.get_top_stores_service(query_db, date_obj, sort_by, limit)
+    top_stores = await QfOverviewService.get_top_stores_service(query_db, date_obj, sort_by, limit, dvd_data_scope)
     logger.info(f'获取热销店铺TOP{limit}成功，排序方式：{sort_by}')
 
     return ResponseUtil.success(data=top_stores)
@@ -108,6 +114,7 @@ async def get_top_stores(
 async def get_realtime_orders(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     store_name: Annotated[Optional[str], Query(description='店铺名称，用于筛选')] = None,
     limit: Annotated[int, Query(description='返回数量', ge=1, le=100)] = 20,
@@ -116,7 +123,7 @@ async def get_realtime_orders(
     获取实时订单列表
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    orders = await QfOverviewService.get_realtime_orders_service(query_db, date_obj, store_name, limit)
+    orders = await QfOverviewService.get_realtime_orders_service(query_db, date_obj, store_name, limit, dvd_data_scope)
     logger.info(f'获取实时订单成功，日期：{target_date or "今天"}，店铺：{store_name or "全部"}，数量：{len(orders)}')
 
     return ResponseUtil.success(data=orders)
@@ -131,6 +138,7 @@ async def get_realtime_orders(
 async def get_sku_sales_data(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     sort_by: Annotated[str, Query(description='排序方式：sales-按销量，amount-按销售额')] = 'sales',
 ) -> Response:
@@ -138,7 +146,7 @@ async def get_sku_sales_data(
     获取SKU销售数据
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    sku_data = await QfOverviewService.get_sku_sales_data_service(query_db, date_obj, sort_by)
+    sku_data = await QfOverviewService.get_sku_sales_data_service(query_db, date_obj, sort_by, dvd_data_scope)
     logger.info(f'获取SKU销售数据成功，排序方式：{sort_by}，数量：{len(sku_data)}')
 
     return ResponseUtil.success(data=sku_data)
@@ -153,13 +161,14 @@ async def get_sku_sales_data(
 async def get_dashboard_metrics(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
 ) -> Response:
     """
     获取大屏核心指标
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    metrics = await QfOverviewService.get_dashboard_metrics_service(query_db, date_obj)
+    metrics = await QfOverviewService.get_dashboard_metrics_service(query_db, date_obj, dvd_data_scope)
     logger.info('获取大屏核心指标成功')
 
     return ResponseUtil.success(data=metrics)
@@ -174,6 +183,7 @@ async def get_dashboard_metrics(
 async def get_store_sales_rank(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
     limit: Annotated[int, Query(description='返回数量')] = 10,
 ) -> Response:
@@ -181,7 +191,7 @@ async def get_store_sales_rank(
     获取店铺销售排行
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    store_rank = await QfOverviewService.get_store_sales_rank_service(query_db, date_obj, limit)
+    store_rank = await QfOverviewService.get_store_sales_rank_service(query_db, date_obj, limit, dvd_data_scope)
     logger.info('获取店铺销售排行成功')
 
     return ResponseUtil.success(data=store_rank)
@@ -196,13 +206,14 @@ async def get_store_sales_rank(
 async def get_channel_sales_data(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
 ) -> Response:
     """
     获取渠道销售数据
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    channel_data = await QfOverviewService.get_channel_sales_data_service(query_db, date_obj)
+    channel_data = await QfOverviewService.get_channel_sales_data_service(query_db, date_obj, dvd_data_scope)
     logger.info('获取渠道销售数据成功')
 
     return ResponseUtil.success(data=channel_data)
@@ -217,12 +228,13 @@ async def get_channel_sales_data(
 async def get_recent_orders(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     limit: Annotated[int, Query(description='返回数量')] = 20,
 ) -> Response:
     """
     获取最近订单
     """
-    recent_orders = await QfOverviewService.get_recent_orders_service(query_db, limit)
+    recent_orders = await QfOverviewService.get_recent_orders_service(query_db, limit, dvd_data_scope)
     logger.info('获取最近订单成功')
 
     return ResponseUtil.success(data=recent_orders)
@@ -237,12 +249,13 @@ async def get_recent_orders(
 async def get_trend_data(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     days: Annotated[int, Query(description='天数')] = 7,
 ) -> Response:
     """
     获取趋势数据
     """
-    trend_data = await QfOverviewService.get_trend_data_service(query_db, days)
+    trend_data = await QfOverviewService.get_trend_data_service(query_db, days, dvd_data_scope)
     logger.info('获取趋势数据成功')
 
     return ResponseUtil.success(data=trend_data)
@@ -257,13 +270,14 @@ async def get_trend_data(
 async def get_all_dashboard_data(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     target_date: Annotated[Optional[str], Query(description='目标日期，格式：YYYY-MM-DD')] = None,
 ) -> Response:
     """
     获取大屏所有数据
     """
     date_obj = date.fromisoformat(target_date) if target_date else None
-    all_data = await QfOverviewService.get_all_dashboard_data_service(query_db, date_obj)
+    all_data = await QfOverviewService.get_all_dashboard_data_service(query_db, date_obj, dvd_data_scope)
     logger.info('获取大屏所有数据成功')
 
     return ResponseUtil.success(data=all_data)
