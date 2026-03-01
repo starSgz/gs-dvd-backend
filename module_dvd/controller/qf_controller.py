@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.aspect.data_scope import DvdDataScopeDependency
 from common.aspect.db_seesion import DBSessionDependency
+from common.aspect.pre_auth import PreAuthDependency
 from common.router import APIRouterPro
 from common.vo import DataResponseModel
 from module_dvd.service.qf_service import QfOverviewService
 from utils.log_util import logger
 from utils.response_util import ResponseUtil
 
-qf_controller = APIRouterPro(prefix='/dvd/qf', order_num=99, tags=['数据大屏-千帆'])
+qf_controller = APIRouterPro(prefix='/dvd/qf', order_num=99, tags=['数据大屏-千帆'], dependencies=[PreAuthDependency()])
 
 
 @qf_controller.get(

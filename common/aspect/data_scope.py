@@ -130,7 +130,9 @@ class GetDvdDataScope:
         user_id = current_user.user.user_id
         dept_id = current_user.user.dept_id
 
-        if current_user.user.admin:
+        # 管理员标志 或 拥有超级权限 (*:*:*) 均不过滤
+        user_auth_list = current_user.permissions
+        if current_user.user.admin or '*:*:*' in user_auth_list:
             return None
 
         if dept_id:
