@@ -17,3 +17,5 @@
     ps -ef | grep "uvicorn app:app --host 0.0.0.0 --port 9099" | grep -v grep
     ps -ef | grep 111666 | grep -v grep | wc -l
 
+    nohup /sgz/gs-dvd-backend/restart.sh > /sgz/gs-dvd-backend/restart.log 2>&1 &
+    

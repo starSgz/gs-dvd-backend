@@ -34,7 +34,6 @@ dvd_account_controller = APIRouterPro(
     prefix='/dvd/account', order_num=21, tags=['DVD配置-账号管理'], dependencies=[PreAuthDependency()]
 )
 
-
 @dvd_account_controller.get(
     '/list',
     summary='获取账号分页列表接口',
