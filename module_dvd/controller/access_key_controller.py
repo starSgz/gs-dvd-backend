@@ -29,7 +29,7 @@ access_key_controller = APIRouterPro(prefix='/dvd/access-key', order_num=10, tag
     summary='获取卡密分页列表接口',
     description='用于获取卡密分页列表',
     response_model=PageResponseModel[AccessKeyModel],
-    dependencies=[AccessKeyInterfaceAuthDependency('dvd:accessKey:list')],
+    dependencies=[UserInterfaceAuthDependency('dvd:accessKey:list')],
 )
 async def get_access_key_list(
     request: Request,

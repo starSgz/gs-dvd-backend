@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.annotation.log_annotation import Log
 from common.aspect.db_seesion import DBSessionDependency
+from common.aspect.interface_auth import UserInterfaceAuthDependency
 from common.aspect.pre_auth import PreAuthDependency
 from common.enums import BusinessType
 from common.router import APIRouterPro
@@ -47,6 +48,7 @@ async def get_config_menu_tree(
     summary='获取配置菜单列表接口',
     description='用于获取配置菜单列表',
     response_model=DataResponseModel[list[ConfigMenuModel]],
+    dependencies=[UserInterfaceAuthDependency('dvd:configMenu:list')]
 )
 async def get_config_menu_list(
     request: Request,
@@ -64,6 +66,8 @@ async def get_config_menu_list(
     summary='新增配置菜单接口',
     description='用于新增配置菜单',
     response_model=ResponseBaseModel,
+    dependencies=[UserInterfaceAuthDependency('dvd:configMenu:add')]
+
 )
 @ValidateFields(validate_model='add_config_menu')
 @Log(title='DVD配置菜单管理', business_type=BusinessType.INSERT)
@@ -85,6 +89,8 @@ async def add_config_menu(
     summary='编辑配置菜单接口',
     description='用于编辑配置菜单',
     response_model=ResponseBaseModel,
+    dependencies=[UserInterfaceAuthDependency('dvd:configMenu:edit')]
+
 )
 @ValidateFields(validate_model='edit_config_menu')
 @Log(title='DVD配置菜单管理', business_type=BusinessType.UPDATE)
@@ -105,6 +111,8 @@ async def edit_config_menu(
     summary='删除配置菜单接口',
     description='用于删除配置菜单',
     response_model=ResponseBaseModel,
+    dependencies=[UserInterfaceAuthDependency('dvd:configMenu:remove')]
+
 )
 @Log(title='DVD配置菜单管理', business_type=BusinessType.DELETE)
 async def delete_config_menu(

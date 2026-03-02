@@ -1,13 +1,18 @@
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Depends, Request, params
 from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.context import RequestContext
 from config.database import Base
+from config.get_db import get_db
+from exceptions.exception import AccessKeyException
 from module_admin.entity.do.dept_do import SysDept
 from module_admin.entity.do.role_do import SysRoleDept
 from module_admin.entity.do.user_do import SysUser
+from module_dvd.dao.access_key_dao import AccessKeyDao
 from utils.dependency_util import DependencyUtil
 
 
@@ -124,16 +129,39 @@ class GetDvdDataScope:
     无部门的用户返回仅自身 user_id 子查询。
     """
 
-    def __call__(self, request: Request):
+    async def __call__(self, request: Request, query_db: AsyncSession = Depends(get_db)):
         DependencyUtil.check_exclude_routes(request, err_msg='当前路由不在认证规则内，不可使用GetDvdDataScope依赖项')
         current_user = RequestContext.get_current_user()
         user_id = current_user.user.user_id
         dept_id = current_user.user.dept_id
 
-        # 管理员标志 或 拥有超级权限 (*:*:*) 均不过滤
+        # 管理员标志 或 拥有超级权限 (*:*:*) 均不过滤，也不校验 AccessKey
         user_auth_list = current_user.permissions
         if current_user.user.admin or '*:*:*' in user_auth_list:
             return None
+
+        # 校验 AccessKey 是否已激活且未过期
+        user_access_key = current_user.user.access_key
+        if not user_access_key:
+            raise AccessKeyException(data='', message='AccessKey未激活')
+
+        redis = request.app.state.redis
+        redis_key = f'access_key:valid:{user_access_key}'
+
+        if not await redis.exists(redis_key):
+            access_key_info = await AccessKeyDao.get_access_key_detail_by_key(query_db, user_access_key)
+            if not access_key_info or not access_key_info.used_time:
+                raise AccessKeyException(data='', message='AccessKey未激活')
+
+            if access_key_info.duration_hours:
+                expire_time = access_key_info.used_time + timedelta(hours=access_key_info.duration_hours)
+                remaining = (expire_time - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    raise AccessKeyException(data='', message='AccessKey已过期')
+                await redis.set(redis_key, '1', ex=int(remaining))
+            else:
+                # 无时限的 key，缓存 1 小时后重新确认一次
+                await redis.set(redis_key, '1', ex=3600)
 
         if dept_id:
             return select(SysUser.user_id).where(SysUser.dept_id == dept_id)

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.annotation.log_annotation import Log
 from common.aspect.db_seesion import DBSessionDependency
+from common.aspect.interface_auth import AccessKeyInterfaceAuthDependency
 from common.aspect.pre_auth import CurrentUserDependency, PreAuthDependency
 from common.enums import BusinessType
 from common.router import APIRouterPro
@@ -39,6 +40,7 @@ dvd_account_controller = APIRouterPro(
     summary='获取账号分页列表接口',
     description='用于获取账号分页列表',
     response_model=PageResponseModel[CrawlAccountModel],
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:account:list')],
 )
 async def get_account_list(
     request: Request,
@@ -114,6 +116,8 @@ async def get_account_detail(
     summary='新增账号接口',
     description='用于新增账号',
     response_model=ResponseBaseModel,
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:account:add')],
+
 )
 @ValidateFields(validate_model='add_crawl_account')
 @Log(title='DVD账号管理', business_type=BusinessType.INSERT)
@@ -122,6 +126,7 @@ async def add_account(
     add_account: CrawlAccountModel,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
     current_user: Annotated[CurrentUserModel, CurrentUserDependency()],
+
 ) -> Response:
     """
     新增账号
@@ -141,6 +146,8 @@ async def add_account(
     summary='编辑账号接口',
     description='用于编辑账号',
     response_model=ResponseBaseModel,
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:account:edit')],
+
 )
 @ValidateFields(validate_model='edit_crawl_account')
 @Log(title='DVD账号管理', business_type=BusinessType.UPDATE)
@@ -166,6 +173,8 @@ async def edit_account(
     summary='删除账号接口',
     description='用于删除账号',
     response_model=ResponseBaseModel,
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:account:remove')],
+
 )
 @Log(title='DVD账号管理', business_type=BusinessType.DELETE)
 async def delete_account(
@@ -188,6 +197,7 @@ async def delete_account(
     summary='获取登录二维码接口',
     description='用于获取登录二维码（根据平台和产品自动选择登录方式）',
     response_model=DataResponseModel[dict],
+    dependencies=[AccessKeyInterfaceAuthDependency('dvd:account:qrcode')],
 )
 async def get_qrcode(
     request: Request,
