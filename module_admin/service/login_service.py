@@ -18,12 +18,14 @@ from config.env import AppConfig, JwtConfig
 from config.get_db import get_db
 from exceptions.exception import AuthException, LoginException, ServiceException
 from module_admin.dao.login_dao import login_by_account
+from module_admin.dao.role_dao import RoleDao
 from module_admin.dao.user_dao import UserDao
 from module_admin.entity.do.dept_do import SysDept
 from module_admin.entity.do.menu_do import SysMenu
 from module_admin.entity.do.user_do import SysUser
 from module_admin.entity.vo.login_vo import MenuTreeModel, MetaModel, RouterModel, SmsCode, UserLogin, UserRegister
-from module_admin.entity.vo.user_vo import AddUserModel, CurrentUserModel, ResetUserModel, TokenData, UserInfoModel
+from module_admin.entity.vo.role_vo import RoleModel
+from module_admin.entity.vo.user_vo import AddUserModel, CurrentUserModel, ResetUserModel, TokenData, UserInfoModel, UserRoleModel
 from module_admin.service.user_service import UserService
 from module_dvd.dao.access_key_dao import AccessKeyDao
 from utils.common_util import CamelCaseUtil
@@ -458,6 +460,18 @@ class LoginService:
                     pwdUpdateDate=datetime.now(),
                 )
                 result = await UserService.add_user_services(query_db, add_user)
+                # 注册成功后，自动为新用户分配 dvd:common 角色
+                new_user = await UserDao.get_user_by_name(query_db, user_register.username)
+                dvd_common_role = await RoleDao.get_role_by_info(query_db, RoleModel(roleKey='dvd:common'))
+                if new_user and dvd_common_role:
+                    try:
+                        await UserDao.add_user_role_dao(
+                            query_db, UserRoleModel(userId=new_user.user_id, roleId=dvd_common_role.role_id)
+                        )
+                        await query_db.commit()
+                    except Exception as e:
+                        await query_db.rollback()
+                        logger.warning(f'为用户 {user_register.username} 分配 dvd:common 角色失败: {e}')
                 return result
             raise ServiceException(message='注册程序已关闭，禁止注册')
         raise ServiceException(message='两次输入的密码不一致')

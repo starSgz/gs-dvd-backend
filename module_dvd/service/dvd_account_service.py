@@ -304,11 +304,11 @@ class CrawlAccountService:
                 }
 
             elif token and cookies:
-                status = 0
+                status = 3  # 默认为异常，验证通过后再置为正常
                 # 检测是否真的登录完毕
                 login_status = login_instance.verify_login(cookies)
                 if login_status:
-                    status = 1
+                    status = 1  # 1-正常
 
                 # 获取店铺名称
                 stores = login_instance.get_stores(cookies)
