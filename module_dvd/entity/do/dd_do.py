@@ -76,6 +76,48 @@ class DdRealHourlyTrend(Base):
     update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
 
 
+class DdRealOverview(Base):
+    """
+    抖店实时概览表（含运营状态字段）
+    """
+
+    __tablename__ = 'dd_real_overview'
+    __table_args__ = {'comment': '抖店实时概览表'}
+
+    id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
+    collect_date = Column(Date, nullable=False, comment='采集时间')
+    store_name = Column(String(255), nullable=True, comment='店铺名称')
+    store_id = Column(String(255), nullable=True, comment='店铺id')
+    crawl_account = Column(String(255), nullable=True, comment='采集账号')
+    real_time = Column(DateTime, nullable=True, comment='实时时间')
+    unpaid = Column(String(255), nullable=True, comment='待支付')
+    unsend = Column(String(255), nullable=True, comment='待发货')
+    abnormal_package = Column(String(255), nullable=True, comment='异常包裹')
+    unprocess = Column(String(255), nullable=True, comment='待处理售后')
+    service_order = Column(String(255), nullable=True, comment='服务工单')
+    to_berectified_risk = Column(String(255), nullable=True, comment='待整改风险点')
+    violation_pending = Column(String(255), nullable=True, comment='待处理违规')
+    pay_amt = Column(String(255), nullable=True, comment='用户支付金额')
+    pay_cnt = Column(String(255), nullable=True, comment='成交订单数')
+    per_usr_pay_amt = Column(String(255), nullable=True, comment='客单价')
+    product_show_ucnt = Column(String(255), nullable=True, comment='商品曝光人数')
+    product_click_ucnt = Column(String(255), nullable=True, comment='商品点击人数')
+    pay_ucnt = Column(String(255), nullable=True, comment='成交人数')
+    rfndsuc_amt = Column(String(255), nullable=True, comment='退款金额(退款时间)')
+    rfndsuc_amt_pay_time = Column(String(255), nullable=True, comment='退款金额(支付时间)')
+    refund_order_cnt = Column(String(255), nullable=True, comment='退款订单数(退款时间)')
+    product_show_click_cnt_ratio = Column(String(255), nullable=True, comment='商品曝光-点击转化率(次数)')
+    product_click_pay_cnt_ratio = Column(String(255), nullable=True, comment='商品点击-成交转化率(次数)')
+    refund_amt_rate = Column(String(255), nullable=True, comment='退款率(支付时间)')
+    refund_order_cnt_pay_time = Column(String(255), nullable=True, comment='退款订单数(支付时间)')
+    income_amt = Column(String(255), nullable=True, comment='成交金额')
+    cost_amt = Column(String(255), nullable=True, comment='支出金额')
+    ad_expense_ratio_with_refund = Column(String(255), nullable=True, comment='投放费比')
+    ad_cost = Column(String(255), nullable=True, comment='投放消耗')
+    update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
+
+
 class DdRealIncomeExpenditureOverview(Base):
     """
     抖店实时收支概览表

@@ -1,10 +1,10 @@
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import func, select, desc
+from sqlalchemy import DECIMAL, Integer, cast, func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from module_dvd.entity.do.dd_do import DdRealBusinessOverview, DdRealHourlyTrend, DdRealIncomeExpenditureOverview
+from module_dvd.entity.do.dd_do import DdRealOverview, DdRealHourlyTrend, DdRealIncomeExpenditureOverview
 
 
 class DdOverviewDao:
@@ -23,41 +23,41 @@ class DdOverviewDao:
         """
         query = (
             select(
-                DdRealBusinessOverview.store_name,
-                DdRealBusinessOverview.store_id
+                DdRealOverview.store_name,
+                DdRealOverview.store_id
             )
             .distinct()
-            .where(DdRealBusinessOverview.store_name.isnot(None))
+            .where(DdRealOverview.store_name.isnot(None))
         )
         if dvd_data_scope is not None:
-            query = query.where(DdRealBusinessOverview.bind_user_id.in_(dvd_data_scope))
-        query = query.order_by(DdRealBusinessOverview.store_name)
+            query = query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
+        query = query.order_by(DdRealOverview.store_name)
 
         result = await db.execute(query)
         rows = result.all()
         return [{'storeName': row.store_name, 'storeId': row.store_id} for row in rows]
 
     @classmethod
-    async def get_store_top5(
+    async def get_store(
         cls, 
         db: AsyncSession, 
         store_id: str = None,
         sort_by: str = 'amount', 
-        limit: int = 5,
+        limit: int = 100,
         dvd_data_scope=None,
     ) -> list[dict[str, Any]]:
         """
-        获取店铺销售TOP5
+        获取店铺销售
         
         :param db: orm对象
         :param store_id: 店铺ID筛选（可选）
         :param sort_by: 排序方式，'amount'-按成交金额，'orders'-按订单数
         :param limit: 返回数量
         :param dvd_data_scope: 数据权限子查询，None 表示不过滤
-        :return: TOP5店铺列表
+        :return: 店铺列表
         """
         latest_date_result = await db.execute(
-            select(func.max(DdRealBusinessOverview.collect_date))
+            select(func.max(DdRealOverview.collect_date))
         )
         query_date = latest_date_result.scalar()
         
@@ -65,28 +65,28 @@ class DdOverviewDao:
             return []
         
         if sort_by == 'orders':
-            sort_field = func.sum(DdRealBusinessOverview.pay_cnt)
+            sort_field = func.sum(cast(DdRealOverview.pay_cnt, Integer))
         else:
-            sort_field = func.sum(DdRealBusinessOverview.income_amt)
+            sort_field = func.sum(cast(DdRealOverview.income_amt, DECIMAL(20, 2)))
         
         query = select(
-            DdRealBusinessOverview.store_name,
-            DdRealBusinessOverview.store_id,
+            DdRealOverview.store_name,
+            DdRealOverview.store_id,
             sort_field.label('total_value')
         ).where(
-            DdRealBusinessOverview.collect_date == query_date,
-            DdRealBusinessOverview.store_name.isnot(None)
+            DdRealOverview.collect_date == query_date,
+            DdRealOverview.store_name.isnot(None)
         )
         
         if store_id:
-            query = query.where(DdRealBusinessOverview.store_id == store_id)
+            query = query.where(DdRealOverview.store_id == store_id)
         if dvd_data_scope is not None:
-            query = query.where(DdRealBusinessOverview.bind_user_id.in_(dvd_data_scope))
+            query = query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
         
         query = (
             query.group_by(
-                DdRealBusinessOverview.store_name,
-                DdRealBusinessOverview.store_id
+                DdRealOverview.store_name,
+                DdRealOverview.store_id
             )
             .order_by(desc('total_value'))
             .limit(limit)
@@ -119,10 +119,10 @@ class DdOverviewDao:
         :param db: orm对象
         :param store_id: 店铺ID筛选（可选）
         :param dvd_data_scope: 数据权限子查询，None 表示不过滤
-        :return: 概览指标数据
+        :return: 概览指标数据（含运营状态新字段）
         """
         latest_date_result = await db.execute(
-            select(func.max(DdRealBusinessOverview.collect_date))
+            select(func.max(DdRealOverview.collect_date))
         )
         query_date = latest_date_result.scalar()
         
@@ -131,57 +131,77 @@ class DdOverviewDao:
                 'payAmt': 0,
                 'payCnt': 0,
                 'productShowUcnt': 0,
-                'refundAmtPayTime': 0,
+                'productClickUcnt': 0,
+                'payUcnt': 0,
+                'rfndsucAmt': 0,
+                'rfndsucAmtPayTime': 0,
+                'refundOrderCnt': 0,
+                'refundOrderCntPayTime': 0,
                 'incomeAmt': 0,
+                'costAmt': 0,
                 'adCost': 0,
                 'perUsrPayAmt': 0,
                 'conversionRate': 0,
                 'productClickPayCntRatio': 0,
                 'productShowClickCntRatio': 0,
                 'refundAmtRate': 0,
-                'adExpenseRatioWithRefund': 0
+                'adExpenseRatioWithRefund': 0,
+                'unpaid': 0,
+                'unsend': 0,
+                'abnormalPackage': 0,
+                'unprocess': 0,
+                'serviceOrder': 0,
+                'toBerectifiedRisk': 0,
+                'violationPending': 0,
             }
         
         if store_id:
             business_query = select(
-                func.sum(DdRealBusinessOverview.pay_amt).label('pay_amt'),
-                func.sum(DdRealBusinessOverview.pay_cnt).label('pay_cnt'),
-                func.sum(DdRealBusinessOverview.product_show_ucnt).label('product_show_ucnt'),
-                func.sum(DdRealBusinessOverview.refund_amt_pay_time).label('refund_amt_pay_time'),
-                func.sum(DdRealBusinessOverview.income_amt).label('income_amt'),
-                func.avg(DdRealBusinessOverview.per_usr_pay_amt).label('per_usr_pay_amt'),
-                func.sum(DdRealBusinessOverview.pay_ucnt).label('pay_ucnt'),
-                func.avg(DdRealBusinessOverview.product_click_pay_cnt_ratio).label('product_click_pay_cnt_ratio'),
-                func.avg(DdRealBusinessOverview.product_show_click_cnt_ratio).label('product_show_click_cnt_ratio')
+                func.sum(cast(DdRealOverview.pay_amt, DECIMAL(20, 2))).label('pay_amt'),
+                func.sum(cast(DdRealOverview.pay_cnt, Integer)).label('pay_cnt'),
+                func.sum(cast(DdRealOverview.product_show_ucnt, Integer)).label('product_show_ucnt'),
+                func.sum(cast(DdRealOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
+                func.sum(cast(DdRealOverview.pay_ucnt, Integer)).label('pay_ucnt'),
+                func.sum(cast(DdRealOverview.rfndsuc_amt, DECIMAL(20, 2))).label('rfndsuc_amt'),
+                func.sum(cast(DdRealOverview.rfndsuc_amt_pay_time, DECIMAL(20, 2))).label('rfndsuc_amt_pay_time'),
+                func.sum(cast(DdRealOverview.refund_order_cnt, Integer)).label('refund_order_cnt'),
+                func.sum(cast(DdRealOverview.refund_order_cnt_pay_time, Integer)).label('refund_order_cnt_pay_time'),
+                func.sum(cast(DdRealOverview.income_amt, DECIMAL(20, 2))).label('income_amt'),
+                func.avg(cast(DdRealOverview.per_usr_pay_amt, DECIMAL(20, 2))).label('per_usr_pay_amt'),
+                func.avg(cast(DdRealOverview.product_click_pay_cnt_ratio, DECIMAL(10, 4))).label('product_click_pay_cnt_ratio'),
+                func.avg(cast(DdRealOverview.product_show_click_cnt_ratio, DECIMAL(10, 4))).label('product_show_click_cnt_ratio'),
             ).where(
-                DdRealBusinessOverview.collect_date == query_date,
-                DdRealBusinessOverview.store_id == store_id
+                DdRealOverview.collect_date == query_date,
+                DdRealOverview.store_id == store_id
             )
         else:
             business_query = select(
-                func.sum(DdRealBusinessOverview.pay_amt).label('pay_amt'),
-                func.sum(DdRealBusinessOverview.pay_cnt).label('pay_cnt'),
-                func.sum(DdRealBusinessOverview.product_show_ucnt).label('product_show_ucnt'),
-                func.sum(DdRealBusinessOverview.refund_amt_pay_time).label('refund_amt_pay_time'),
-                func.sum(DdRealBusinessOverview.income_amt).label('income_amt'),
-                func.avg(DdRealBusinessOverview.per_usr_pay_amt).label('per_usr_pay_amt'),
-                func.sum(DdRealBusinessOverview.pay_ucnt).label('pay_ucnt'),
-                func.sum(DdRealBusinessOverview.product_click_cnt).label('product_click_cnt'),
-                func.sum(DdRealBusinessOverview.product_show_cnt).label('product_show_cnt')
+                func.sum(cast(DdRealOverview.pay_amt, DECIMAL(20, 2))).label('pay_amt'),
+                func.sum(cast(DdRealOverview.pay_cnt, Integer)).label('pay_cnt'),
+                func.sum(cast(DdRealOverview.product_show_ucnt, Integer)).label('product_show_ucnt'),
+                func.sum(cast(DdRealOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
+                func.sum(cast(DdRealOverview.pay_ucnt, Integer)).label('pay_ucnt'),
+                func.sum(cast(DdRealOverview.rfndsuc_amt, DECIMAL(20, 2))).label('rfndsuc_amt'),
+                func.sum(cast(DdRealOverview.rfndsuc_amt_pay_time, DECIMAL(20, 2))).label('rfndsuc_amt_pay_time'),
+                func.sum(cast(DdRealOverview.refund_order_cnt, Integer)).label('refund_order_cnt'),
+                func.sum(cast(DdRealOverview.refund_order_cnt_pay_time, Integer)).label('refund_order_cnt_pay_time'),
+                func.sum(cast(DdRealOverview.income_amt, DECIMAL(20, 2))).label('income_amt'),
+                func.avg(cast(DdRealOverview.per_usr_pay_amt, DECIMAL(20, 2))).label('per_usr_pay_amt'),
             ).where(
-                DdRealBusinessOverview.collect_date == query_date
+                DdRealOverview.collect_date == query_date
             )
 
         if dvd_data_scope is not None:
-            business_query = business_query.where(DdRealBusinessOverview.bind_user_id.in_(dvd_data_scope))
+            business_query = business_query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
         
         business_result = await db.execute(business_query)
         business_row = business_result.first()
         
         income_query = select(
             func.sum(DdRealIncomeExpenditureOverview.ad_cost).label('ad_cost'),
+            func.sum(DdRealIncomeExpenditureOverview.cost_amt).label('cost_amt'),
             func.avg(DdRealIncomeExpenditureOverview.refund_amt_rate).label('refund_amt_rate'),
-            func.avg(DdRealIncomeExpenditureOverview.ad_expense_ratio_with_refund).label('ad_expense_ratio_with_refund')
+            func.avg(DdRealIncomeExpenditureOverview.ad_expense_ratio_with_refund).label('ad_expense_ratio_with_refund'),
         ).where(
             DdRealIncomeExpenditureOverview.collect_date == query_date
         )
@@ -193,6 +213,26 @@ class DdOverviewDao:
         
         income_result = await db.execute(income_query)
         income_row = income_result.first()
+
+        # 查询 dd_real_overview 获取运营状态新字段
+        overview_query = select(
+            func.sum(cast(DdRealOverview.unpaid, Integer)).label('unpaid'),
+            func.sum(cast(DdRealOverview.unsend, Integer)).label('unsend'),
+            func.sum(cast(DdRealOverview.abnormal_package, Integer)).label('abnormal_package'),
+            func.sum(cast(DdRealOverview.unprocess, Integer)).label('unprocess'),
+            func.sum(cast(DdRealOverview.service_order, Integer)).label('service_order'),
+            func.sum(cast(DdRealOverview.to_berectified_risk, Integer)).label('to_berectified_risk'),
+            func.sum(cast(DdRealOverview.violation_pending, Integer)).label('violation_pending'),
+        ).where(
+            DdRealOverview.collect_date == query_date
+        )
+        if store_id:
+            overview_query = overview_query.where(DdRealOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            overview_query = overview_query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
+
+        overview_result = await db.execute(overview_query)
+        overview_row = overview_result.first()
         
         pay_ucnt = float(business_row.pay_ucnt or 0)
         product_show_ucnt = float(business_row.product_show_ucnt or 0)
@@ -203,25 +243,43 @@ class DdOverviewDao:
             product_show_click_cnt_ratio = round(float(business_row.product_show_click_cnt_ratio or 0), 2)
         else:
             pay_cnt = float(business_row.pay_cnt or 0)
-            product_click_cnt = float(business_row.product_click_cnt or 0)
-            product_click_pay_cnt_ratio = round((pay_cnt / product_click_cnt * 100), 2) if product_click_cnt > 0 else 0
-            
-            product_show_cnt = float(business_row.product_show_cnt or 0)
-            product_show_click_cnt_ratio = round((product_click_cnt / product_show_cnt * 100), 2) if product_show_cnt > 0 else 0
+            product_click_ucnt_val = float(business_row.product_click_ucnt or 0)
+            product_click_pay_cnt_ratio = round((pay_cnt / product_click_ucnt_val * 100), 2) if product_click_ucnt_val > 0 else 0
+
+            product_show_ucnt_val = float(business_row.product_show_ucnt or 0)
+            product_show_click_cnt_ratio = round((product_click_ucnt_val / product_show_ucnt_val * 100), 2) if product_show_ucnt_val > 0 else 0
         
         return {
+            # 交易核心指标
             'payAmt': round(float(business_row.pay_amt or 0), 2),
             'payCnt': int(business_row.pay_cnt or 0),
-            'productShowUcnt': int(business_row.product_show_ucnt or 0),
-            'refundAmtPayTime': round(float(business_row.refund_amt_pay_time or 0), 2),
             'incomeAmt': round(float(business_row.income_amt or 0), 2),
-            'adCost': round(float(income_row.ad_cost or 0), 2) if income_row else 0,
             'perUsrPayAmt': round(float(business_row.per_usr_pay_amt or 0), 2),
+            'productShowUcnt': int(business_row.product_show_ucnt or 0),
+            'productClickUcnt': int(business_row.product_click_ucnt or 0),
+            'payUcnt': int(business_row.pay_ucnt or 0),
+            # 退款指标
+            'rfndsucAmt': round(float(business_row.rfndsuc_amt or 0), 2),
+            'rfndsucAmtPayTime': round(float(business_row.rfndsuc_amt_pay_time or 0), 2),
+            'refundOrderCnt': int(business_row.refund_order_cnt or 0),
+            'refundOrderCntPayTime': int(business_row.refund_order_cnt_pay_time or 0),
+            # 收支指标
+            'adCost': round(float(income_row.ad_cost or 0), 2) if income_row else 0,
+            'costAmt': round(float(income_row.cost_amt or 0), 2) if income_row else 0,
+            # 转化率指标
             'conversionRate': conversion_rate,
             'productClickPayCntRatio': product_click_pay_cnt_ratio,
             'productShowClickCntRatio': product_show_click_cnt_ratio,
             'refundAmtRate': round(float(income_row.refund_amt_rate or 0) * 100, 2) if income_row else 0,
-            'adExpenseRatioWithRefund': round(float(income_row.ad_expense_ratio_with_refund or 0) * 100, 2) if income_row else 0
+            'adExpenseRatioWithRefund': round(float(income_row.ad_expense_ratio_with_refund or 0) * 100, 2) if income_row else 0,
+            # 运营状态新字段（来自 dd_real_overview）
+            'unpaid': int(overview_row.unpaid or 0) if overview_row else 0,
+            'unsend': int(overview_row.unsend or 0) if overview_row else 0,
+            'abnormalPackage': int(overview_row.abnormal_package or 0) if overview_row else 0,
+            'unprocess': int(overview_row.unprocess or 0) if overview_row else 0,
+            'serviceOrder': int(overview_row.service_order or 0) if overview_row else 0,
+            'toBerectifiedRisk': int(overview_row.to_berectified_risk or 0) if overview_row else 0,
+            'violationPending': int(overview_row.violation_pending or 0) if overview_row else 0,
         }
 
     @classmethod

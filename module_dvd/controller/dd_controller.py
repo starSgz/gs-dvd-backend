@@ -37,23 +37,23 @@ async def get_store_list(
 
 
 @dd_controller.get(
-    '/dashboard/store-top5',
-    summary='获取抖店店铺销售TOP5',
+    '/dashboard/store',
+    summary='获取抖店店铺销售',
     description='获取成交金额/订单数前五的店铺',
     response_model=DataResponseModel,
 )
-async def get_store_top5(
+async def get_store(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
     dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
     store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
     sort_by: Annotated[str, Query(description='排序方式：orders-按订单量，amount-按成交金额')] = 'amount',
-    limit: Annotated[int, Query(description='返回数量', ge=1, le=100)] = 5,
+    limit: Annotated[int, Query(description='返回数量', ge=1, le=100)] = 100,
 ) -> Response:
     """
-    获取抖店店铺销售TOP5
+    获取抖店店铺销售
     """
-    top_stores = await DdOverviewService.get_store_top5_service(query_db, store_id, sort_by, limit, dvd_data_scope)
+    top_stores = await DdOverviewService.get_store_service(query_db, store_id, sort_by, limit, dvd_data_scope)
     logger.info(f'获取抖店店铺TOP{limit}成功，排序方式：{sort_by}')
 
     return ResponseUtil.success(data=top_stores)

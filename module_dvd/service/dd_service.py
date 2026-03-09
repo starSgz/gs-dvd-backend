@@ -23,16 +23,16 @@ class DdOverviewService:
         return await DdOverviewDao.get_store_list(query_db, dvd_data_scope)
 
     @classmethod
-    async def get_store_top5_service(
+    async def get_store_service(
         cls, 
         query_db: AsyncSession, 
         store_id: str = None,
         sort_by: str = 'amount', 
-        limit: int = 5,
+        limit: int = 100,
         dvd_data_scope=None,
     ) -> list[dict[str, Any]]:
         """
-        获取店铺TOP5 service
+        获取店铺 service
         
         :param query_db: orm对象
         :param store_id: 店铺ID筛选
@@ -41,7 +41,7 @@ class DdOverviewService:
         :param dvd_data_scope: 数据权限子查询
         :return: TOP5店铺列表
         """
-        return await DdOverviewDao.get_store_top5(query_db, store_id, sort_by, limit, dvd_data_scope)
+        return await DdOverviewDao.get_store(query_db, store_id, sort_by, limit, dvd_data_scope)
 
     @classmethod
     async def get_overview_metrics_service(
