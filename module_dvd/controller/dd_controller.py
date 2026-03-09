@@ -37,7 +37,7 @@ async def get_store_list(
 
 
 @dd_controller.get(
-    '/dashboard/store',
+    '/dashboard/real-time/store',
     summary='获取抖店店铺销售',
     description='获取成交金额/订单数前五的店铺',
     response_model=DataResponseModel,
@@ -60,7 +60,7 @@ async def get_store(
 
 
 @dd_controller.get(
-    '/dashboard/overview-metrics',
+    '/dashboard/real-time/overview-metrics',
     summary='获取抖店概览指标',
     description='获取用户支付金额、成交订单数、商品曝光人数等概览指标',
     response_model=DataResponseModel,
@@ -81,7 +81,7 @@ async def get_overview_metrics(
 
 
 @dd_controller.get(
-    '/dashboard/hourly-trend',
+    '/dashboard/real-time/hourly-trend',
     summary='获取小时趋势数据',
     description='获取24小时的趋势数据，支持按指标筛选',
     response_model=DataResponseModel,

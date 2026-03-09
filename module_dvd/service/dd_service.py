@@ -39,7 +39,7 @@ class DdOverviewService:
         :param sort_by: 排序方式，'amount'-按成交金额，'orders'-按订单数
         :param limit: 返回数量
         :param dvd_data_scope: 数据权限子查询
-        :return: TOP5店铺列表
+        :return: 店铺列表
         """
         return await DdOverviewDao.get_store(query_db, store_id, sort_by, limit, dvd_data_scope)
 
