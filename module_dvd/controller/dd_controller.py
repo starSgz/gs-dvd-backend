@@ -1,8 +1,10 @@
 from datetime import date
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union
 
 from fastapi import Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from common.vo import PageModel
 
 from common.aspect.data_scope import DvdDataScopeDependency
 from common.aspect.db_seesion import DBSessionDependency
@@ -120,3 +122,56 @@ async def get_available_indices(
     logger.info('获取可用指标列表成功')
 
     return ResponseUtil.success(data=indices)
+
+
+@dd_controller.get(
+    '/dashboard/daily/overview-metrics',
+    summary='获取抖店每日概览指标',
+    description='根据指定日期范围汇总概览指标，包括成交金额、退款、流量转化等数据',
+    response_model=DataResponseModel,
+)
+async def get_daily_overview_metrics(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
+    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+) -> Response:
+    """
+    获取抖店每日概览指标（来自 dd_overview 表，支持日期范围聚合）
+    """
+    metrics = await DdOverviewService.get_daily_overview_metrics_service(
+        query_db, start_date, end_date, store_id, dvd_data_scope
+    )
+    logger.info(f'获取抖店每日概览指标成功，日期范围：{start_date} ~ {end_date}')
+
+    return ResponseUtil.success(data=metrics)
+
+
+@dd_controller.get(
+    '/dashboard/daily/order-list',
+    summary='获取抖店每日订单列表',
+    description='根据指定日期范围查询订单列表，支持店铺、订单状态筛选，结果分页返回',
+    response_model=DataResponseModel[dict],
+)
+async def get_daily_order_list(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
+    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+    order_status_text: Annotated[Optional[str], Query(description='订单状态，用于筛选，如：已完成、退款中')] = None,
+    page_num: Annotated[int, Query(description='当前页码', ge=1)] = 1,
+    page_size: Annotated[int, Query(description='每页记录数', ge=1, le=200)] = 20,
+) -> Response:
+    """
+    获取抖店每日订单列表（来自 dd_order_list 表，支持日期范围 + 分页）
+    """
+    order_page = await DdOverviewService.get_order_list_service(
+        query_db, start_date, end_date, store_id, order_status_text, page_num, page_size, dvd_data_scope
+    )
+    logger.info(f'获取抖店订单列表成功，日期范围：{start_date} ~ {end_date}，第{page_num}页')
+
+    return ResponseUtil.success(model_content=order_page)

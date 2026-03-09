@@ -6,6 +6,37 @@ from sqlalchemy import CHAR, Column, Date, DateTime, BigInteger, String, DECIMAL
 from config.database import Base
 
 
+class DdOrderList(Base):
+    """
+    抖店订单列表表
+    """
+
+    __tablename__ = 'dd_order_list'
+    __table_args__ = {'comment': '抖店订单列表表'}
+
+    id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
+    collect_date = Column(Date, nullable=False, comment='采集时间')
+    store_name = Column(String(255), nullable=True, comment='店铺名称')
+    store_id = Column(String(255), nullable=True, comment='店铺id')
+    crawl_account = Column(String(255), nullable=True, comment='采集账号')
+    shop_order_id = Column(String(64), nullable=False, comment='订单编号')
+    create_time = Column(DateTime, nullable=True, comment='下单时间')
+    product_name = Column(String(512), nullable=True, comment='商品名称')
+    order_status_text = Column(String(64), nullable=True, comment='订单状态')
+    order_detail_url = Column(String(512), nullable=True, comment='订单详情地址')
+    pay_time = Column(DateTime, nullable=True, comment='支付时间')
+    user_nickname = Column(String(255), nullable=True, comment='用户昵称')
+    post_amount = Column(DECIMAL(10, 2), nullable=True, comment='运费(元)')
+    actual_pay_amount = Column(DECIMAL(10, 2), nullable=True, comment='实际支付金额(元)')
+    pay_amount = Column(DECIMAL(10, 2), nullable=True, comment='支付金额(元)')
+    actual_receive_amount = Column(String(64), nullable=True, comment='实际收入金额')
+    product_id = Column(String(64), nullable=True, comment='商品ID')
+    sku_spec = Column(String(512), nullable=True, comment='商品规格')
+    total_product_count = Column(Integer, nullable=True, comment='商品总数')
+    update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
+
+
 class DdRealBusinessOverview(Base):
     """
     抖店实时业务概览表
@@ -108,13 +139,53 @@ class DdRealOverview(Base):
     rfndsuc_amt_pay_time = Column(String(255), nullable=True, comment='退款金额(支付时间)')
     refund_order_cnt = Column(String(255), nullable=True, comment='退款订单数(退款时间)')
     product_show_click_cnt_ratio = Column(String(255), nullable=True, comment='商品曝光-点击转化率(次数)')
-    product_click_pay_cnt_ratio = Column(String(255), nullable=True, comment='商品点击-成交转化率(次数)')
+    product_click_pay_cnt_ratio: str = Column(String(255), nullable=True, comment='商品点击-成交转化率(次数)')
     refund_amt_rate = Column(String(255), nullable=True, comment='退款率(支付时间)')
     refund_order_cnt_pay_time = Column(String(255), nullable=True, comment='退款订单数(支付时间)')
     income_amt = Column(String(255), nullable=True, comment='成交金额')
     cost_amt = Column(String(255), nullable=True, comment='支出金额')
     ad_expense_ratio_with_refund = Column(String(255), nullable=True, comment='投放费比')
     ad_cost = Column(String(255), nullable=True, comment='投放消耗')
+    update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
+
+
+class DdOverview(Base):
+    """
+    抖店每日概览表
+    """
+
+    __tablename__ = 'dd_overview'
+    __table_args__ = {'comment': '抖店每日概览表'}
+
+    id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
+    collect_date = Column(Date, nullable=False, comment='采集时间')
+    store_name = Column(String(255), nullable=True, comment='店铺名称')
+    store_id = Column(String(255), nullable=True, comment='店铺id')
+    crawl_account = Column(String(255), nullable=True, comment='采集账号')
+    pay_amt = Column(String(64), nullable=True, comment='用户支付金额')
+    income_amt = Column(String(64), nullable=True, comment='成交金额')
+    pay_cnt = Column(String(64), nullable=True, comment='成交订单数')
+    per_usr_pay_amt = Column(String(64), nullable=True, comment='客单价')
+    pay_ucnt = Column(String(64), nullable=True, comment='成交人数')
+    pay_qc_plat_coupon_amt = Column(String(64), nullable=True, comment='智能优惠券金额')
+    pay_plat_cost_amt = Column(String(64), nullable=True, comment='电商平台补贴金额')
+    deposit_pay_amt = Column(String(64), nullable=True, comment='预售定金')
+    author_subsidy_amt = Column(String(64), nullable=True, comment='达人补贴金额')
+    refunded_pay_amt_pay_time = Column(String(64), nullable=True, comment='退款后用户支付金额(支付时间)')
+    refund_pay_qc_plat_coupon_amt_pay_time = Column(String(64), nullable=True, comment='退款后智能优惠券金额(支付时间)')
+    refund_pay_plat_cost_amt_pay_time = Column(String(64), nullable=True, comment='退款后电商平台补贴金额(支付时间)')
+    rfndsuc_amt_pay_time = Column(String(64), nullable=True, comment='退款金额(支付时间)')
+    rfndsuc_amt = Column(String(64), nullable=True, comment='退款金额(退款时间)')
+    refund_order_cnt_pay_time = Column(String(64), nullable=True, comment='退款订单数(支付时间)')
+    refund_order_cnt = Column(String(64), nullable=True, comment='退款订单数(退款时间)')
+    refund_amt_pay_time = Column(String(64), nullable=True, comment='成交退款金额(支付时间)')
+    refund_amt = Column(String(64), nullable=True, comment='成交退款金额(退款时间)')
+    product_show_ucnt = Column(String(64), nullable=True, comment='商品曝光人数')
+    product_show_cnt = Column(String(64), nullable=True, comment='商品曝光次数')
+    product_click_ucnt = Column(String(64), nullable=True, comment='商品点击人数')
+    product_click_cnt = Column(String(64), nullable=True, comment='商品点击次数')
+    gpm = Column(String(64), nullable=True, comment='千次曝光用户支付金额')
     update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
 
 
