@@ -150,6 +150,85 @@ async def get_daily_overview_metrics(
 
 
 @dd_controller.get(
+    '/dashboard/geo-order-stats',
+    summary='获取地图地理聚合订单数据',
+    description='按省份/城市/区县聚合订单支付总金额和订单总数，用于地图大屏展示',
+    response_model=DataResponseModel,
+)
+async def get_geo_order_stats(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    level: Annotated[str, Query(description='聚合层级：province-省份，city-城市，town-区县')] = 'province',
+    parent_province: Annotated[Optional[str], Query(description='父级省份名称，level=city/town时生效')] = None,
+    parent_city: Annotated[Optional[str], Query(description='父级城市名称，level=town时生效')] = None,
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+    start_date: Annotated[Optional[date], Query(description='采集日期开始，格式：YYYY-MM-DD')] = None,
+    end_date: Annotated[Optional[date], Query(description='采集日期结束，格式：YYYY-MM-DD')] = None,
+) -> Response:
+    """
+    获取地理聚合订单数据（支付金额 + 订单数）
+    """
+    geo_stats = await DdOverviewService.get_geo_order_stats_service(
+        query_db, level, parent_province, parent_city, store_id, start_date, end_date, dvd_data_scope
+    )
+    logger.info(f'获取地理聚合订单数据成功，层级：{level}，父级省份：{parent_province}，父级城市：{parent_city}')
+
+    return ResponseUtil.success(data=geo_stats)
+
+
+@dd_controller.get(
+    '/dashboard/daily/traffic-trend',
+    summary='获取商品曝光点击流量趋势',
+    description='按日期返回商品曝光人数/次数、点击人数/次数的每日趋势，用于柱线混合图',
+    response_model=DataResponseModel,
+)
+async def get_traffic_trend(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
+    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+) -> Response:
+    """
+    获取商品曝光/点击流量每日趋势（来自 dd_overview 表）
+    """
+    trend = await DdOverviewService.get_traffic_trend_service(
+        query_db, start_date, end_date, store_id, dvd_data_scope
+    )
+    logger.info(f'获取流量趋势数据成功，日期范围：{start_date} ~ {end_date}')
+
+    return ResponseUtil.success(data=trend)
+
+
+@dd_controller.get(
+    '/dashboard/category-stats',
+    summary='获取商品类目销售占比数据',
+    description='按商品名称和商品规格聚合订单数量，返回 TOP N 结果，用于玫瑰图展示',
+    response_model=DataResponseModel,
+)
+async def get_category_stats(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    start_date: Annotated[Optional[date], Query(description='采集日期开始，格式：YYYY-MM-DD')] = None,
+    end_date: Annotated[Optional[date], Query(description='采集日期结束，格式：YYYY-MM-DD')] = None,
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+    top_n: Annotated[int, Query(description='取前N条，默认10', ge=1, le=50)] = 10,
+) -> Response:
+    """
+    获取商品类目销售占比数据（商品名称 + 商品规格，用于玫瑰图）
+    """
+    stats = await DdOverviewService.get_category_stats_service(
+        query_db, start_date, end_date, store_id, top_n, dvd_data_scope
+    )
+    logger.info(f'获取商品类目销售占比数据成功，日期范围：{start_date} ~ {end_date}')
+
+    return ResponseUtil.success(data=stats)
+
+
+@dd_controller.get(
     '/dashboard/daily/order-list',
     summary='获取抖店每日订单列表',
     description='根据指定日期范围查询订单列表，支持店铺、订单状态筛选，结果分页返回',
@@ -159,8 +238,8 @@ async def get_daily_order_list(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
     dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
-    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
-    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    start_date: Annotated[Optional[date], Query(description='开始日期，格式：YYYY-MM-DD，不传则不限制')] = None,
+    end_date: Annotated[Optional[date], Query(description='结束日期，格式：YYYY-MM-DD，不传则不限制')] = None,
     store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
     order_status_text: Annotated[Optional[str], Query(description='订单状态，用于筛选，如：已完成、退款中')] = None,
     page_num: Annotated[int, Query(description='当前页码', ge=1)] = 1,

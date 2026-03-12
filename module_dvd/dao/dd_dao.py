@@ -527,6 +527,61 @@ class DdOverviewDao:
         }
 
 
+    @classmethod
+    async def get_traffic_trend(
+        cls,
+        db: AsyncSession,
+        start_date: date,
+        end_date: date,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> list[dict[str, Any]]:
+        """
+        按日期查询商品曝光/点击流量趋势（用于柱线混合图）
+
+        :param db: orm对象
+        :param start_date: 开始日期
+        :param end_date: 结束日期
+        :param store_id: 店铺ID筛选（可选）
+        :param dvd_data_scope: 数据权限子查询
+        :return: 按日期升序排列的流量趋势列表
+        """
+        query = (
+            select(
+                DdOverview.collect_date.label('collect_date'),
+                func.sum(cast(DdOverview.product_show_ucnt, Integer)).label('product_show_ucnt'),
+                func.sum(cast(DdOverview.product_show_cnt, Integer)).label('product_show_cnt'),
+                func.sum(cast(DdOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
+                func.sum(cast(DdOverview.product_click_cnt, Integer)).label('product_click_cnt'),
+            )
+            .where(
+                DdOverview.collect_date >= start_date,
+                DdOverview.collect_date <= end_date,
+            )
+            .group_by(DdOverview.collect_date)
+            .order_by(DdOverview.collect_date)
+        )
+
+        if store_id:
+            query = query.where(DdOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            query = query.where(DdOverview.bind_user_id.in_(dvd_data_scope))
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        return [
+            {
+                'date': str(row.collect_date),
+                'productShowUcnt': int(row.product_show_ucnt or 0),
+                'productShowCnt': int(row.product_show_cnt or 0),
+                'productClickUcnt': int(row.product_click_ucnt or 0),
+                'productClickCnt': int(row.product_click_cnt or 0),
+            }
+            for row in rows
+        ]
+
+
 class DdOrderListDao:
     """
     抖店订单列表模块数据库操作层
@@ -536,8 +591,8 @@ class DdOrderListDao:
     async def get_order_list(
         cls,
         db: AsyncSession,
-        start_date: date,
-        end_date: date,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         order_status_text: str = None,
         page_num: int = 1,
@@ -548,8 +603,8 @@ class DdOrderListDao:
         查询抖店订单列表（分页）
 
         :param db: orm对象
-        :param start_date: 开始日期（采集日期）
-        :param end_date: 结束日期（采集日期）
+        :param start_date: 开始日期（采集日期），为 None 时不过滤
+        :param end_date: 结束日期（采集日期），为 None 时不过滤
         :param store_id: 店铺ID筛选
         :param order_status_text: 订单状态筛选
         :param page_num: 当前页码
@@ -580,16 +635,171 @@ class DdOrderListDao:
                 DdOrderList.total_product_count,
                 DdOrderList.update_time,
             )
-            .where(
-                DdOrderList.collect_date >= start_date,
-                DdOrderList.collect_date <= end_date,
-                DdOrderList.store_id == store_id if store_id else True,
-                DdOrderList.order_status_text == order_status_text if order_status_text else True,
-            )
             .order_by(desc(DdOrderList.create_time))
         )
 
+        if start_date is not None:
+            query = query.where(DdOrderList.collect_date >= start_date)
+        if end_date is not None:
+            query = query.where(DdOrderList.collect_date <= end_date)
+        if store_id:
+            query = query.where(DdOrderList.store_id == store_id)
+        if order_status_text:
+            query = query.where(DdOrderList.order_status_text == order_status_text)
         if dvd_data_scope is not None:
             query = query.where(DdOrderList.bind_user_id.in_(dvd_data_scope))
 
         return await PageUtil.paginate(db, query, page_num, page_size, is_page=True)
+
+    @classmethod
+    async def get_geo_order_stats(
+        cls,
+        db: AsyncSession,
+        level: str = 'province',
+        parent_province: str = None,
+        parent_city: str = None,
+        store_id: str = None,
+        start_date: date = None,
+        end_date: date = None,
+        dvd_data_scope=None,
+    ) -> list[dict[str, Any]]:
+        """
+        按地理层级聚合订单支付金额和订单数（用于地图展示）
+
+        :param db: orm对象
+        :param level: 聚合层级，'province'按省份、'city'按城市、'town'按区县
+        :param parent_province: 父级省份名称（level='city'或'town'时生效）
+        :param parent_city: 父级城市名称（level='town'时生效）
+        :param store_id: 店铺ID筛选（可选）
+        :param start_date: 采集日期开始（可选）
+        :param end_date: 采集日期结束（可选）
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
+        :return: 地理聚合数据列表
+        """
+        # 根据层级选择 GROUP BY 字段
+        level_field_map = {
+            'province': DdOrderList.province,
+            'city': DdOrderList.city,
+            'town': DdOrderList.town,
+        }
+        group_field = level_field_map.get(level, DdOrderList.province)
+
+        query = (
+            select(
+                group_field.label('name'),
+                func.sum(DdOrderList.actual_pay_amount).label('total_pay_amount'),
+                func.count(DdOrderList.id).label('order_count'),
+            )
+            .where(group_field.isnot(None), group_field != '')
+        )
+
+        # 父级筛选条件
+        if level == 'city' and parent_province:
+            query = query.where(DdOrderList.province == parent_province)
+        elif level == 'town' and parent_province:
+            query = query.where(DdOrderList.province == parent_province)
+            if parent_city:
+                query = query.where(DdOrderList.city == parent_city)
+
+        # 日期范围筛选
+        if start_date is not None:
+            query = query.where(DdOrderList.collect_date >= start_date)
+        if end_date is not None:
+            query = query.where(DdOrderList.collect_date <= end_date)
+
+        if store_id:
+            query = query.where(DdOrderList.store_id == store_id)
+        if dvd_data_scope is not None:
+            query = query.where(DdOrderList.bind_user_id.in_(dvd_data_scope))
+
+        query = (
+            query
+            .group_by(group_field)
+            .order_by(desc('total_pay_amount'))
+        )
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        return [
+            {
+                'name': row.name,
+                'payAmount': round(float(row.total_pay_amount or 0), 2),
+                'orderCount': int(row.order_count or 0),
+            }
+            for row in rows
+        ]
+
+    @classmethod
+    async def get_category_stats(
+        cls,
+        db: AsyncSession,
+        start_date: date = None,
+        end_date: date = None,
+        store_id: str = None,
+        top_n: int = 10,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        按商品名称和商品规格聚合订单数量，用于玫瑰图展示
+
+        :param db: orm对象
+        :param start_date: 采集日期开始（可选）
+        :param end_date: 采集日期结束（可选）
+        :param store_id: 店铺ID筛选（可选）
+        :param top_n: 取前N条记录（默认取TOP10）
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
+        :return: 包含 productStats 和 skuStats 的字典
+        """
+
+        def _build_base_filters(query):
+            if start_date is not None:
+                query = query.where(DdOrderList.collect_date >= start_date)
+            if end_date is not None:
+                query = query.where(DdOrderList.collect_date <= end_date)
+            if store_id:
+                query = query.where(DdOrderList.store_id == store_id)
+            if dvd_data_scope is not None:
+                query = query.where(DdOrderList.bind_user_id.in_(dvd_data_scope))
+            return query
+
+        # 商品名称聚合
+        product_query = (
+            select(
+                DdOrderList.product_name.label('name'),
+                func.count(DdOrderList.id).label('order_count'),
+            )
+            .where(DdOrderList.product_name.isnot(None), DdOrderList.product_name != '')
+            .group_by(DdOrderList.product_name)
+            .order_by(desc('order_count'))
+            .limit(top_n)
+        )
+        product_query = _build_base_filters(product_query)
+        product_result = await db.execute(product_query)
+        product_rows = product_result.all()
+
+        # 商品规格聚合
+        sku_query = (
+            select(
+                DdOrderList.sku_spec.label('name'),
+                func.count(DdOrderList.id).label('order_count'),
+            )
+            .where(DdOrderList.sku_spec.isnot(None), DdOrderList.sku_spec != '')
+            .group_by(DdOrderList.sku_spec)
+            .order_by(desc('order_count'))
+            .limit(top_n)
+        )
+        sku_query = _build_base_filters(sku_query)
+        sku_result = await db.execute(sku_query)
+        sku_rows = sku_result.all()
+
+        return {
+            'productStats': [
+                {'name': row.name, 'value': int(row.order_count or 0)}
+                for row in product_rows
+            ],
+            'skuStats': [
+                {'name': row.name, 'value': int(row.order_count or 0)}
+                for row in sku_rows
+            ],
+        }

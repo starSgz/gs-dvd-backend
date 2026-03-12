@@ -117,11 +117,88 @@ class DdOverviewService:
         return await DdOverviewDao.get_daily_overview_metrics(query_db, start_date, end_date, store_id, dvd_data_scope)
 
     @classmethod
-    async def get_order_list_service(
+    async def get_geo_order_stats_service(
+        cls,
+        query_db: AsyncSession,
+        level: str = 'province',
+        parent_province: str = None,
+        parent_city: str = None,
+        store_id: str = None,
+        start_date: date = None,
+        end_date: date = None,
+        dvd_data_scope=None,
+    ) -> list[dict[str, Any]]:
+        """
+        按地理层级聚合订单支付金额和订单数 service（用于地图展示）
+
+        :param query_db: orm对象
+        :param level: 聚合层级，'province'按省份、'city'按城市、'town'按区县
+        :param parent_province: 父级省份名称（level='city'/'town'时生效）
+        :param parent_city: 父级城市名称（level='town'时生效）
+        :param store_id: 店铺ID筛选（可选）
+        :param start_date: 采集日期开始（可选）
+        :param end_date: 采集日期结束（可选）
+        :param dvd_data_scope: 数据权限子查询
+        :return: 地理聚合数据列表
+        """
+        return await DdOrderListDao.get_geo_order_stats(   
+            query_db, level, parent_province, parent_city, store_id, start_date, end_date, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_traffic_trend_service(
         cls,
         query_db: AsyncSession,
         start_date: date,
         end_date: date,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> list[dict]:
+        """
+        按日期查询商品曝光/点击流量趋势 service（用于柱线混合图）
+
+        :param query_db: orm对象
+        :param start_date: 开始日期
+        :param end_date: 结束日期
+        :param store_id: 店铺ID筛选（可选）
+        :param dvd_data_scope: 数据权限子查询
+        :return: 按日期升序排列的流量趋势列表
+        """
+        return await DdOverviewDao.get_traffic_trend(
+            query_db, start_date, end_date, store_id, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_category_stats_service(
+        cls,
+        query_db: AsyncSession,
+        start_date: date = None,
+        end_date: date = None,
+        store_id: str = None,
+        top_n: int = 10,
+        dvd_data_scope=None,
+    ) -> dict:
+        """
+        按商品名称和商品规格聚合订单数量 service（用于玫瑰图展示）
+
+        :param query_db: orm对象
+        :param start_date: 采集日期开始（可选）
+        :param end_date: 采集日期结束（可选）
+        :param store_id: 店铺ID筛选（可选）
+        :param top_n: 取前N条记录
+        :param dvd_data_scope: 数据权限子查询
+        :return: 包含 productStats 和 skuStats 的字典
+        """
+        return await DdOrderListDao.get_category_stats(
+            query_db, start_date, end_date, store_id, top_n, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_order_list_service(
+        cls,
+        query_db: AsyncSession,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         order_status_text: str = None,
         page_num: int = 1,
@@ -132,8 +209,8 @@ class DdOverviewService:
         获取抖店订单列表 service（支持日期范围 + 分页）
 
         :param query_db: orm对象
-        :param start_date: 开始日期
-        :param end_date: 结束日期
+        :param start_date: 开始日期，为 None 时不过滤
+        :param end_date: 结束日期，为 None 时不过滤
         :param store_id: 店铺ID筛选
         :param order_status_text: 订单状态筛选
         :param page_num: 当前页码

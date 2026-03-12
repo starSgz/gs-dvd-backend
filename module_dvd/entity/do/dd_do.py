@@ -34,6 +34,10 @@ class DdOrderList(Base):
     product_id = Column(String(64), nullable=True, comment='商品ID')
     sku_spec = Column(String(512), nullable=True, comment='商品规格')
     total_product_count = Column(Integer, nullable=True, comment='商品总数')
+    province = Column(String(64), nullable=True, comment='省份')
+    city = Column(String(64), nullable=True, comment='城市')
+    town = Column(String(64), nullable=True, comment='区县')
+    street = Column(String(64), nullable=True, comment='街道')
     update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
 
 
