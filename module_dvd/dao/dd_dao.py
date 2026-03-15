@@ -394,8 +394,8 @@ class DdOverviewDao:
     async def get_daily_overview_metrics(
         cls,
         db: AsyncSession,
-        start_date: date,
-        end_date: date,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         dvd_data_scope=None,
     ) -> dict[str, Any]:
@@ -403,15 +403,15 @@ class DdOverviewDao:
         获取每日概览指标数据（来自 dd_overview 表，支持日期范围聚合）
 
         :param db: orm对象
-        :param start_date: 开始日期
-        :param end_date: 结束日期
+        :param start_date: 开始日期，为 None 时不过滤
+        :param end_date: 结束日期，为 None 时不过滤
         :param store_id: 店铺ID筛选（可选）
         :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 日期范围内聚合的概览指标数据
         """
         empty = {
-            'startDate': str(start_date),
-            'endDate': str(end_date),
+            'startDate': str(start_date) if start_date else '',
+            'endDate': str(end_date) if end_date else '',
             'payAmt': 0,
             'incomeAmt': 0,
             'payCnt': 0,
@@ -463,10 +463,12 @@ class DdOverviewDao:
             func.sum(cast(DdOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
             func.sum(cast(DdOverview.product_click_cnt, Integer)).label('product_click_cnt'),
             func.avg(cast(DdOverview.gpm, DECIMAL(20, 2))).label('gpm'),
-        ).where(
-            DdOverview.collect_date >= start_date,
-            DdOverview.collect_date <= end_date,
         )
+
+        if start_date:
+            query = query.where(DdOverview.collect_date >= start_date)
+        if end_date:
+            query = query.where(DdOverview.collect_date <= end_date)
 
         if store_id:
             query = query.where(DdOverview.store_id == store_id)
@@ -531,8 +533,8 @@ class DdOverviewDao:
     async def get_traffic_trend(
         cls,
         db: AsyncSession,
-        start_date: date,
-        end_date: date,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         dvd_data_scope=None,
     ) -> list[dict[str, Any]]:
@@ -540,8 +542,8 @@ class DdOverviewDao:
         按日期查询商品曝光/点击流量趋势（用于柱线混合图）
 
         :param db: orm对象
-        :param start_date: 开始日期
-        :param end_date: 结束日期
+        :param start_date: 开始日期，为 None 时不过滤
+        :param end_date: 结束日期，为 None 时不过滤
         :param store_id: 店铺ID筛选（可选）
         :param dvd_data_scope: 数据权限子查询
         :return: 按日期升序排列的流量趋势列表
@@ -554,10 +556,15 @@ class DdOverviewDao:
                 func.sum(cast(DdOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
                 func.sum(cast(DdOverview.product_click_cnt, Integer)).label('product_click_cnt'),
             )
-            .where(
-                DdOverview.collect_date >= start_date,
-                DdOverview.collect_date <= end_date,
-            )
+        )
+
+        if start_date:
+            query = query.where(DdOverview.collect_date >= start_date)
+        if end_date:
+            query = query.where(DdOverview.collect_date <= end_date)
+
+        query = (
+            query
             .group_by(DdOverview.collect_date)
             .order_by(DdOverview.collect_date)
         )

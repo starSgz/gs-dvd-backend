@@ -134,8 +134,8 @@ async def get_daily_overview_metrics(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
     dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
-    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
-    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    start_date: Annotated[Optional[date], Query(description='开始日期，格式：YYYY-MM-DD')] = None,
+    end_date: Annotated[Optional[date], Query(description='结束日期，格式：YYYY-MM-DD')] = None,
     store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
 ) -> Response:
     """
@@ -187,8 +187,8 @@ async def get_traffic_trend(
     request: Request,
     query_db: Annotated[AsyncSession, DBSessionDependency()],
     dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
-    start_date: Annotated[date, Query(description='开始日期，格式：YYYY-MM-DD')],
-    end_date: Annotated[date, Query(description='结束日期，格式：YYYY-MM-DD')],
+    start_date: Annotated[Optional[date], Query(description='开始日期，格式：YYYY-MM-DD')] = None,
+    end_date: Annotated[Optional[date], Query(description='结束日期，格式：YYYY-MM-DD')] = None,
     store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
 ) -> Response:
     """

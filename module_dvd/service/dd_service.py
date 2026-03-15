@@ -99,8 +99,8 @@ class DdOverviewService:
     async def get_daily_overview_metrics_service(
         cls,
         query_db: AsyncSession,
-        start_date: date,
-        end_date: date,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         dvd_data_scope=None,
     ) -> dict[str, Any]:
@@ -108,8 +108,8 @@ class DdOverviewService:
         获取每日概览指标数据 service（支持日期范围聚合）
 
         :param query_db: orm对象
-        :param start_date: 开始日期
-        :param end_date: 结束日期
+        :param start_date: 开始日期，为 None 时不过滤
+        :param end_date: 结束日期，为 None 时不过滤
         :param store_id: 店铺ID筛选
         :param dvd_data_scope: 数据权限子查询
         :return: 日期范围内聚合的概览指标数据
@@ -149,8 +149,8 @@ class DdOverviewService:
     async def get_traffic_trend_service(
         cls,
         query_db: AsyncSession,
-        start_date: date,
-        end_date: date,
+        start_date: date = None,
+        end_date: date = None,
         store_id: str = None,
         dvd_data_scope=None,
     ) -> list[dict]:
@@ -158,8 +158,8 @@ class DdOverviewService:
         按日期查询商品曝光/点击流量趋势 service（用于柱线混合图）
 
         :param query_db: orm对象
-        :param start_date: 开始日期
-        :param end_date: 结束日期
+        :param start_date: 开始日期，为 None 时不过滤
+        :param end_date: 结束日期，为 None 时不过滤
         :param store_id: 店铺ID筛选（可选）
         :param dvd_data_scope: 数据权限子查询
         :return: 按日期升序排列的流量趋势列表
