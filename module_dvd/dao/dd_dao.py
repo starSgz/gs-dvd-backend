@@ -5,7 +5,7 @@ from sqlalchemy import DECIMAL, Integer, cast, func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.vo import PageModel
-from module_dvd.entity.do.dd_do import DdRealOverview, DdRealHourlyTrend, DdRealIncomeExpenditureOverview, DdOverview, DdOrderList
+from module_dvd.entity.do.dd_do import DdRealOverview, DdRealHourlyTrend, DdRealIncomeExpenditureOverview, DdOverview, DdOrderList, DdAccountOverview, DdMarginAccount
 from utils.page_util import PageUtil
 
 
@@ -809,4 +809,89 @@ class DdOrderListDao:
                 {'name': row.name, 'value': int(row.order_count or 0)}
                 for row in sku_rows
             ],
+        }
+
+
+class DdAccountDao:
+    """
+    抖店账户余额 & 保证金数据库操作层
+    """
+
+    @classmethod
+    async def get_account_balance(
+        cls,
+        db: AsyncSession,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        查询最新采集日期的账户余额（dd_account_overview）和保证金（dd_margin_account）汇总数据
+
+        :param db: orm对象
+        :param store_id: 店铺ID筛选（可选）
+        :param dvd_data_scope: 数据权限子查询
+        :return: 包含 balance、withdrawBalance、frozenBalance、pendingSettleAmount、marginAmount 等字段
+        """
+        empty = {
+            'balance': 0,
+            'withdrawBalance': 0,
+            'frozenBalance': 0,
+            'pendingSettleAmount': 0,
+            'marginAmount': 0,
+            'payableAmount': 0,
+            'canRefundAmount': 0,
+        }
+
+        # ---------- 账户余额：取最新采集日期汇总 ----------
+        acc_max_date_query = select(func.max(DdAccountOverview.collect_date))
+        if store_id:
+            acc_max_date_query = acc_max_date_query.where(DdAccountOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            acc_max_date_query = acc_max_date_query.where(DdAccountOverview.bind_user_id.in_(dvd_data_scope))
+
+        acc_query = select(
+            func.sum(DdAccountOverview.balance).label('balance'),
+            func.sum(DdAccountOverview.withdraw_balance).label('withdraw_balance'),
+            func.sum(DdAccountOverview.frozen_balance).label('frozen_balance'),
+            func.sum(DdAccountOverview.pending_settle_amount).label('pending_settle_amount'),
+        ).where(DdAccountOverview.collect_date == acc_max_date_query.scalar_subquery())
+        if store_id:
+            acc_query = acc_query.where(DdAccountOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            acc_query = acc_query.where(DdAccountOverview.bind_user_id.in_(dvd_data_scope))
+
+        acc_result = await db.execute(acc_query)
+        acc_row = acc_result.one_or_none()
+
+        # ---------- 保证金：取最新采集日期汇总 ----------
+        margin_max_date_query = select(func.max(DdMarginAccount.collect_date))
+        if store_id:
+            margin_max_date_query = margin_max_date_query.where(DdMarginAccount.store_id == store_id)
+        if dvd_data_scope is not None:
+            margin_max_date_query = margin_max_date_query.where(DdMarginAccount.bind_user_id.in_(dvd_data_scope))
+
+        margin_query = select(
+            func.sum(DdMarginAccount.account_amount).label('account_amount'),
+            func.sum(DdMarginAccount.payable_amount).label('payable_amount'),
+            func.sum(DdMarginAccount.can_refund_amount).label('can_refund_amount'),
+        ).where(DdMarginAccount.collect_date == margin_max_date_query.scalar_subquery())
+        if store_id:
+            margin_query = margin_query.where(DdMarginAccount.store_id == store_id)
+        if dvd_data_scope is not None:
+            margin_query = margin_query.where(DdMarginAccount.bind_user_id.in_(dvd_data_scope))
+
+        margin_result = await db.execute(margin_query)
+        margin_row = margin_result.one_or_none()
+
+        if acc_row is None and margin_row is None:
+            return empty
+
+        return {
+            'balance': float(acc_row.balance or 0) if acc_row else 0,
+            'withdrawBalance': float(acc_row.withdraw_balance or 0) if acc_row else 0,
+            'frozenBalance': float(acc_row.frozen_balance or 0) if acc_row else 0,
+            'pendingSettleAmount': float(acc_row.pending_settle_amount or 0) if acc_row else 0,
+            'marginAmount': float(margin_row.account_amount or 0) if margin_row else 0,
+            'payableAmount': float(margin_row.payable_amount or 0) if margin_row else 0,
+            'canRefundAmount': float(margin_row.can_refund_amount or 0) if margin_row else 0,
         }

@@ -203,6 +203,27 @@ async def get_traffic_trend(
 
 
 @dd_controller.get(
+    '/dashboard/account-balance',
+    summary='获取账户余额与保证金数据',
+    description='查询最新采集日期的账户总金额、可提现金额、保证金余额等，支持按店铺筛选',
+    response_model=DataResponseModel,
+)
+async def get_account_balance(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+) -> Response:
+    """
+    获取账户余额与保证金数据（来自 dd_account_overview 和 dd_margin_account 表，取最新采集日期）
+    """
+    data = await DdOverviewService.get_account_balance_service(query_db, store_id, dvd_data_scope)
+    logger.info(f'获取账户余额与保证金数据成功，店铺ID：{store_id}')
+
+    return ResponseUtil.success(data=data)
+
+
+@dd_controller.get(
     '/dashboard/category-stats',
     summary='获取商品类目销售占比数据',
     description='按商品名称和商品规格聚合订单数量，返回 TOP N 结果，用于玫瑰图展示',

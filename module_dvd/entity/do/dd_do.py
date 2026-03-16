@@ -193,6 +193,50 @@ class DdOverview(Base):
     update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
 
 
+class DdAccountOverview(Base):
+    """
+    抖店账户余额概览表
+    """
+
+    __tablename__ = 'dd_account_overview'
+    __table_args__ = {'comment': '抖店账户余额概览表'}
+
+    id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
+    collect_date = Column(Date, nullable=False, comment='采集时间')
+    store_name = Column(String(255), nullable=True, comment='店铺名称')
+    store_id = Column(String(255), nullable=True, comment='店铺id')
+    crawl_account = Column(String(255), nullable=True, comment='采集账号')
+    withdraw_balance = Column(DECIMAL(10, 2), nullable=True, comment='可提现金额(元)')
+    balance = Column(DECIMAL(10, 2), nullable=True, comment='总金额(元)')
+    frozen_balance = Column(DECIMAL(10, 2), nullable=True, comment='已冻结金额(元)')
+    pending_settle_amount = Column(DECIMAL(10, 2), nullable=True, comment='待结算金额(元)')
+    jh_withdraw_balance = Column(DECIMAL(10, 2), nullable=True, comment='聚合可提现金额(元)')
+    wx_withdraw_balance = Column(DECIMAL(10, 2), nullable=True, comment='微信可提现金额(元)')
+    dy_withdraw_balance = Column(DECIMAL(10, 2), nullable=True, comment='抖音可提现金额(元)')
+    update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
+
+
+class DdMarginAccount(Base):
+    """
+    抖店保证金账户表
+    """
+
+    __tablename__ = 'dd_margin_account'
+    __table_args__ = {'comment': '抖店保证金账户表'}
+
+    id = Column(CHAR(32), primary_key=True, nullable=False, comment='主键ID')
+    bind_user_id = Column(BigInteger, nullable=False, comment='绑定的数据用户ID')
+    collect_date = Column(Date, nullable=False, comment='采集时间')
+    store_name = Column(String(255), nullable=True, comment='店铺名称')
+    store_id = Column(String(255), nullable=True, comment='店铺id')
+    crawl_account = Column(String(255), nullable=True, comment='采集账号')
+    account_amount = Column(DECIMAL(10, 2), nullable=True, comment='基础保证金余额(元)')
+    payable_amount = Column(DECIMAL(10, 2), nullable=True, comment='应缴基础保证金(元)')
+    can_refund_amount = Column(DECIMAL(10, 2), nullable=True, comment='可退金额(元)')
+    update_time = Column(DateTime, nullable=False, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment='更新时间')
+
+
 class DdRealIncomeExpenditureOverview(Base):
     """
     抖店实时收支概览表

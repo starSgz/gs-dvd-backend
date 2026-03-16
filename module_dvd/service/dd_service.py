@@ -4,7 +4,7 @@ from typing import Any, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.vo import PageModel
-from module_dvd.dao.dd_dao import DdOverviewDao, DdOrderListDao
+from module_dvd.dao.dd_dao import DdOverviewDao, DdOrderListDao, DdAccountDao
 
 
 class DdOverviewService:
@@ -221,3 +221,20 @@ class DdOverviewService:
         return await DdOrderListDao.get_order_list(
             query_db, start_date, end_date, store_id, order_status_text, page_num, page_size, dvd_data_scope
         )
+
+    @classmethod
+    async def get_account_balance_service(
+        cls,
+        query_db: AsyncSession,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取账户余额与保证金数据 service（取最新采集日期，支持店铺筛选）
+
+        :param query_db: orm对象
+        :param store_id: 店铺ID筛选（可选）
+        :param dvd_data_scope: 数据权限子查询
+        :return: 包含 balance、withdrawBalance、marginAmount 等字段的字典
+        """
+        return await DdAccountDao.get_account_balance(query_db, store_id, dvd_data_scope)
