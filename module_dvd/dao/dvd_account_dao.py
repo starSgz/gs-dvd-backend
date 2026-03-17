@@ -45,7 +45,7 @@ class CrawlAccountDao:
 
     @classmethod
     async def get_account_list(
-        cls, db: AsyncSession, query_object: CrawlAccountQueryModel, is_page: bool = False
+        cls, db: AsyncSession, query_object: CrawlAccountQueryModel, is_page: bool = False, dvd_data_scope=None
     ) -> Sequence[DvdCrawlAccountInfo]:
         """
         根据查询参数获取账号列表信息
@@ -53,6 +53,7 @@ class CrawlAccountDao:
         :param db: orm对象
         :param query_object: 查询参数对象
         :param is_page: 是否分页
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 账号列表信息对象
         """
         query = select(DvdCrawlAccountInfo).where(
@@ -61,6 +62,9 @@ class CrawlAccountDao:
             DvdCrawlAccountInfo.account.like(f'%{query_object.account}%') if query_object.account else True,
             DvdCrawlAccountInfo.status == query_object.status if query_object.status else True,
         ).order_by(DvdCrawlAccountInfo.create_time.desc())
+
+        if dvd_data_scope is not None:
+            query = query.where(DvdCrawlAccountInfo.bind_user_id.in_(dvd_data_scope))
 
         if is_page:
             offset = (query_object.page_num - 1) * query_object.page_size
@@ -71,26 +75,30 @@ class CrawlAccountDao:
         return account_list
 
     @classmethod
-    async def get_account_count(cls, db: AsyncSession, query_object: CrawlAccountQueryModel) -> int:
+    async def get_account_count(cls, db: AsyncSession, query_object: CrawlAccountQueryModel, dvd_data_scope=None) -> int:
         """
         根据查询参数获取账号总数
 
         :param db: orm对象
         :param query_object: 查询参数对象
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 账号总数
         """
-        count = (
-            await db.execute(
-                select(func.count('*'))
-                .select_from(DvdCrawlAccountInfo)
-                .where(
-                    DvdCrawlAccountInfo.platform_id == query_object.platform_id if query_object.platform_id else True,
-                    DvdCrawlAccountInfo.product_id == query_object.product_id if query_object.product_id else True,
-                    DvdCrawlAccountInfo.account.like(f'%{query_object.account}%') if query_object.account else True,
-                    DvdCrawlAccountInfo.status == query_object.status if query_object.status else True,
-                )
+        count_query = (
+            select(func.count('*'))
+            .select_from(DvdCrawlAccountInfo)
+            .where(
+                DvdCrawlAccountInfo.platform_id == query_object.platform_id if query_object.platform_id else True,
+                DvdCrawlAccountInfo.product_id == query_object.product_id if query_object.product_id else True,
+                DvdCrawlAccountInfo.account.like(f'%{query_object.account}%') if query_object.account else True,
+                DvdCrawlAccountInfo.status == query_object.status if query_object.status else True,
             )
-        ).scalar()
+        )
+
+        if dvd_data_scope is not None:
+            count_query = count_query.where(DvdCrawlAccountInfo.bind_user_id.in_(dvd_data_scope))
+
+        count = (await db.execute(count_query)).scalar()
 
         return count
 

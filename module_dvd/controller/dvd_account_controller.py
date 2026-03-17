@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Path, Query, Request, Response
 from pydantic_validation_decorator import ValidateFields
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.annotation.log_annotation import Log
+from common.aspect.data_scope import DvdDataScopeDependency
 from common.aspect.db_seesion import DBSessionDependency
 from common.aspect.interface_auth import AccessKeyInterfaceAuthDependency
 from common.aspect.pre_auth import CurrentUserDependency, PreAuthDependency
@@ -45,11 +46,12 @@ async def get_account_list(
     request: Request,
     account_query: Annotated[CrawlAccountQueryModel, Query()],
     query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
 ) -> Response:
     """
     获取账号分页列表
     """
-    account_page_result = await CrawlAccountService.get_account_list_services(query_db, account_query)
+    account_page_result = await CrawlAccountService.get_account_list_services(query_db, account_query, dvd_data_scope)
     logger.info('获取成功')
 
     return ResponseUtil.success(model_content=account_page_result)

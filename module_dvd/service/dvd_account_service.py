@@ -44,17 +44,18 @@ class CrawlAccountService:
 
     @classmethod
     async def get_account_list_services(
-        cls, query_db: AsyncSession, query_object: CrawlAccountQueryModel
+        cls, query_db: AsyncSession, query_object: CrawlAccountQueryModel, dvd_data_scope=None
     ) -> PageModel:
         """
         获取账号分页列表信息service
 
         :param query_db: orm对象
         :param query_object: 查询参数对象
+        :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 账号分页列表信息
         """
-        account_list_result = await CrawlAccountDao.get_account_list(query_db, query_object, is_page=True)
-        account_count = await CrawlAccountDao.get_account_count(query_db, query_object)
+        account_list_result = await CrawlAccountDao.get_account_list(query_db, query_object, is_page=True, dvd_data_scope=dvd_data_scope)
+        account_count = await CrawlAccountDao.get_account_count(query_db, query_object, dvd_data_scope=dvd_data_scope)
 
         account_list = [CamelCaseUtil.transform_result(account) for account in account_list_result]
 
