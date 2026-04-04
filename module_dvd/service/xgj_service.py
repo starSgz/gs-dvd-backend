@@ -22,6 +22,48 @@ class XgjOverviewService:
         return await XgjOverviewDao.get_store_list(query_db, dvd_data_scope)
 
     @classmethod
+    async def get_overview_metrics_service(
+        cls,
+        query_db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取经营核心指标
+
+        :param query_db: orm对象
+        :param store_name: 店铺名称
+        :param store_id: 店铺ID
+        :param dvd_data_scope: 数据权限子查询
+        :return: 经营核心指标
+        """
+        return await XgjOverviewDao.get_overview_metrics(
+            query_db, store_name, store_id, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_pay_order_trend_service(
+        cls,
+        query_db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取支付订单数小时走势图
+
+        :param query_db: orm对象
+        :param store_name: 店铺名称
+        :param store_id: 店铺ID
+        :param dvd_data_scope: 数据权限子查询
+        :return: 支付订单数小时走势图
+        """
+        return await XgjOverviewDao.get_pay_order_trend(
+            query_db, store_name, store_id, dvd_data_scope
+        )
+
+    @classmethod
     async def get_product_status_distribution_service(
         cls,
         query_db: AsyncSession,
@@ -48,6 +90,7 @@ class XgjOverviewService:
         query_db: AsyncSession,
         store_name: str = None,
         store_id: str = None,
+        sort_by: str = 'amount',
         limit: int = 100,
         dvd_data_scope=None,
     ) -> dict[str, Any]:
@@ -57,10 +100,32 @@ class XgjOverviewService:
         :param query_db: orm对象
         :param store_name: 店铺名称
         :param store_id: 店铺ID
+        :param sort_by: 排序字段
         :param limit: 返回数量
         :param dvd_data_scope: 数据权限子查询
         :return: Top店铺排行
         """
         return await XgjOverviewDao.get_top_store_ranking(
-            query_db, store_name, store_id, limit, dvd_data_scope
+            query_db, store_name, store_id, sort_by, limit, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_order_risk_summary_service(
+        cls,
+        query_db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取售后预警与监控摘要
+
+        :param query_db: orm对象
+        :param store_name: 店铺名称
+        :param store_id: 店铺ID
+        :param dvd_data_scope: 数据权限子查询
+        :return: 售后预警与监控摘要
+        """
+        return await XgjOverviewDao.get_order_risk_summary(
+            query_db, store_name, store_id, dvd_data_scope
         )
