@@ -1,4 +1,5 @@
 from typing import Any
+from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,6 +65,31 @@ class XgjOverviewService:
         )
 
     @classmethod
+    async def get_daily_order_analysis_service(
+        cls,
+        query_db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        start_date: date = None,
+        end_date: date = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取经营数据日维度分析
+
+        :param query_db: orm对象
+        :param store_name: 店铺名称
+        :param store_id: 店铺ID
+        :param start_date: 开始日期
+        :param end_date: 结束日期
+        :param dvd_data_scope: 数据权限子查询
+        :return: 日维度趋势分析数据
+        """
+        return await XgjOverviewDao.get_daily_order_analysis(
+            query_db, store_name, store_id, start_date, end_date, dvd_data_scope
+        )
+
+    @classmethod
     async def get_product_status_distribution_service(
         cls,
         query_db: AsyncSession,
@@ -107,6 +133,26 @@ class XgjOverviewService:
         """
         return await XgjOverviewDao.get_top_store_ranking(
             query_db, store_name, store_id, sort_by, limit, dvd_data_scope
+        )
+
+    @classmethod
+    async def get_shop_order_flow_service(
+        cls,
+        query_db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取店铺订单流转数据
+        :param query_db: orm对象
+        :param store_name: 店铺名称
+        :param store_id: 店铺ID
+        :param dvd_data_scope: 数据权限子查询
+        :return: 店铺订单流转数据
+        """
+        return await XgjOverviewDao.get_shop_order_flow(
+            query_db, store_name, store_id, dvd_data_scope
         )
 
     @classmethod

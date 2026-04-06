@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated, Optional
 
 from fastapi import Query, Request, Response
@@ -89,6 +90,34 @@ async def get_pay_order_trend(
 
 
 @xgj_controller.get(
+    '/dashboard/daily-order-analysis',
+    summary='获取经营数据日维度分析',
+    description='按店铺和日期范围查询经营数据日维度分析，用于订单、支付、退款、关闭趋势图展示',
+    response_model=DataResponseModel,
+)
+async def get_daily_order_analysis(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    store_name: Annotated[Optional[str], Query(description='店铺名称，用于筛选')] = None,
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+    start_date: Annotated[Optional[date], Query(description='开始日期，格式：YYYY-MM-DD')] = None,
+    end_date: Annotated[Optional[date], Query(description='结束日期，格式：YYYY-MM-DD')] = None,
+) -> Response:
+    """
+    获取经营数据日维度分析
+    """
+    analysis_data = await XgjOverviewService.get_daily_order_analysis_service(
+        query_db, store_name, store_id, start_date, end_date, dvd_data_scope
+    )
+    logger.info(
+        f'获取闲鱼经营数据日维度分析成功，店铺名称：{store_name}，店铺ID：{store_id}，日期范围：{start_date} ~ {end_date}'
+    )
+
+    return ResponseUtil.success(data=analysis_data)
+
+
+@xgj_controller.get(
     '/dashboard/product-status-distribution',
     summary='获取商品状态分布',
     description='按店铺筛选并汇总当天最新小时的商品状态快照，用于商品状态分布图',
@@ -136,6 +165,30 @@ async def get_top_store_ranking(
     logger.info(
         f'获取闲鱼Top店铺排行成功，店铺名称：{store_name}，店铺ID：{store_id}，排序字段：{sort_by}，返回数量：{limit}'
     )
+
+    return ResponseUtil.success(data=stats)
+
+
+@xgj_controller.get(
+    '/dashboard/shop-order-flow',
+    summary='获取店铺订单流转数据',
+    description='按当天最新采集小时查询店铺订单流转与退款处理数据，用于店铺订单流转面板展示',
+    response_model=DataResponseModel,
+)
+async def get_shop_order_flow(
+    request: Request,
+    query_db: Annotated[AsyncSession, DBSessionDependency()],
+    dvd_data_scope: Annotated[Optional[object], DvdDataScopeDependency()],
+    store_name: Annotated[Optional[str], Query(description='店铺名称，用于筛选')] = None,
+    store_id: Annotated[Optional[str], Query(description='店铺ID，用于筛选')] = None,
+) -> Response:
+    """
+    获取店铺订单流转数据
+    """
+    stats = await XgjOverviewService.get_shop_order_flow_service(
+        query_db, store_name, store_id, dvd_data_scope
+    )
+    logger.info(f'获取闲鱼店铺订单流转数据成功，店铺名称：{store_name}，店铺ID：{store_id}')
 
     return ResponseUtil.success(data=stats)
 

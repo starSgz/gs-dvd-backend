@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from module_dvd.entity.do.xgj_order_stats_do import XgjOrderStats
 from module_dvd.entity.do.xgj_real_order_stats_do import XgjRealOrderStats
 from module_dvd.entity.do.xgj_real_product_stats_do import XgjRealProductStats
+from module_dvd.entity.do.xgj_real_refund_stats_do import XgjRealRefundStats
 from module_dvd.entity.do.xgj_real_today_stats_do import XgjRealTodayStats
 
 
@@ -37,6 +38,33 @@ class XgjOverviewDao:
         else:
             trend = 'flat'
         return trend, f"{abs(diff_rate):.1f}%"
+
+    @staticmethod
+    def _normalize_date_range(start_date, end_date):
+        """
+        规范化日期范围，避免开始日期晚于结束日期。
+        """
+        if start_date and end_date and start_date > end_date:
+            return end_date, start_date
+        return start_date, end_date
+
+    @staticmethod
+    async def _get_today_latest_collect_hour(db: AsyncSession, model, filters: list):
+        query_date = date.today()
+        latest_hour_query = select(
+            func.max(model.collect_hour).label('latest_collect_hour')
+        ).where(
+            *filters,
+            model.collect_date == query_date,
+        )
+        latest_collect_hour = (await db.execute(latest_hour_query)).scalar_one_or_none()
+        return query_date, latest_collect_hour
+
+    @staticmethod
+    def _build_latest_collect_time(query_date: date, latest_collect_hour):
+        if latest_collect_hour is None:
+            return None
+        return f"{query_date} {int(latest_collect_hour):02d}:00:00"
 
     @classmethod
     async def get_store_list(cls, db: AsyncSession, dvd_data_scope=None) -> list[dict[str, Any]]:
@@ -247,6 +275,62 @@ class XgjOverviewDao:
         }
 
     @classmethod
+    async def get_daily_order_analysis(
+        cls,
+        db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        start_date=None,
+        end_date=None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取经营数据日维度分析
+
+        基于 xgj_order_stats 按天聚合，支持店铺和日期范围筛选，
+        用于订单数量/支付金额，以及退款/关闭相关趋势图展示。
+        """
+        start_date, end_date = cls._normalize_date_range(start_date, end_date)
+
+        query = select(
+            XgjOrderStats.collect_date,
+            func.sum(XgjOrderStats.all_order_num).label('all_order_num'),
+            func.sum(XgjOrderStats.paid_order_amount).label('paid_order_amount'),
+            func.sum(XgjOrderStats.refund_order_num).label('refund_order_num'),
+            func.sum(XgjOrderStats.refund_order_amount).label('refund_order_amount'),
+            func.sum(XgjOrderStats.closed_order_num).label('closed_order_num'),
+            func.sum(XgjOrderStats.closed_order_amount).label('closed_order_amount'),
+        ).where(XgjOrderStats.collect_date.isnot(None))
+
+        if store_name:
+            query = query.where(XgjOrderStats.store_name == store_name)
+        if store_id:
+            query = query.where(XgjOrderStats.store_id == store_id)
+        if start_date is not None:
+            query = query.where(XgjOrderStats.collect_date >= start_date)
+        if end_date is not None:
+            query = query.where(XgjOrderStats.collect_date <= end_date)
+        if dvd_data_scope is not None:
+            query = query.where(XgjOrderStats.bind_user_id.in_(dvd_data_scope))
+
+        query = query.group_by(XgjOrderStats.collect_date).order_by(XgjOrderStats.collect_date)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        return {
+            'startDate': str(start_date) if start_date else '',
+            'endDate': str(end_date) if end_date else '',
+            'dates': [str(row.collect_date) for row in rows],
+            'orderNumSeries': [int(round(float(row.all_order_num or 0))) for row in rows],
+            'payAmountSeries': [round(float(row.paid_order_amount or 0), 2) for row in rows],
+            'refundOrderNumSeries': [int(round(float(row.refund_order_num or 0))) for row in rows],
+            'refundAmountSeries': [round(float(row.refund_order_amount or 0), 2) for row in rows],
+            'closedOrderNumSeries': [int(round(float(row.closed_order_num or 0))) for row in rows],
+            'closedAmountSeries': [round(float(row.closed_order_amount or 0), 2) for row in rows],
+        }
+
+    @classmethod
     async def get_product_status_distribution(
         cls,
         db: AsyncSession,
@@ -297,6 +381,7 @@ class XgjOverviewDao:
             return {
                 'stats': [{'key': key, 'value': 0} for key, _field in status_fields],
                 'total': 0,
+                'sellingEfficiency': '0%',
                 'latestCollectTime': None,
             }
 
@@ -318,11 +403,20 @@ class XgjOverviewDao:
             total += value
             stats.append({'key': key, 'value': value})
 
+        selling_num = float(getattr(row, 'sellingNum', 0) or 0)
+        on_sale_stock_num = float(getattr(row, 'onSaleStockNum', 0) or 0)
+        selling_efficiency_denominator = selling_num + on_sale_stock_num
+        selling_efficiency = '0%'
+        if selling_efficiency_denominator > 0:
+            selling_efficiency_value = (selling_num / selling_efficiency_denominator) * 100
+            selling_efficiency = f"{selling_efficiency_value:.2f}".rstrip('0').rstrip('.') + '%'
+
         latest_collect_time = f"{query_date} {int(latest_collect_hour):02d}:00:00"
 
         return {
             'stats': stats,
             'total': total,
+            'sellingEfficiency': selling_efficiency,
             'latestCollectTime': latest_collect_time,
         }
 
@@ -419,6 +513,91 @@ class XgjOverviewDao:
         return {
             'items': items,
             'latestCollectTime': latest_collect_time,
+        }
+
+    @classmethod
+    async def get_shop_order_flow(
+        cls,
+        db: AsyncSession,
+        store_name: str = None,
+        store_id: str = None,
+        dvd_data_scope=None,
+    ) -> dict[str, Any]:
+        """
+        获取店铺订单流转数据
+        """
+        today_filters = []
+        refund_filters = []
+
+        if store_name:
+            today_filters.append(XgjRealTodayStats.store_name == store_name)
+            refund_filters.append(XgjRealRefundStats.store_name == store_name)
+        if store_id:
+            today_filters.append(XgjRealTodayStats.store_id == store_id)
+            refund_filters.append(XgjRealRefundStats.store_id == store_id)
+        if dvd_data_scope is not None:
+            today_filters.append(XgjRealTodayStats.bind_user_id.in_(dvd_data_scope))
+            refund_filters.append(XgjRealRefundStats.bind_user_id.in_(dvd_data_scope))
+
+        today_query_date, today_latest_collect_hour = await cls._get_today_latest_collect_hour(
+            db, XgjRealTodayStats, today_filters
+        )
+        refund_query_date, refund_latest_collect_hour = await cls._get_today_latest_collect_hour(
+            db, XgjRealRefundStats, refund_filters
+        )
+
+        today_stats = {
+            'pendingPaymentNum': 0,
+            'waitSendNum': 0,
+            'shippedNum': 0,
+            'pendingAfterSaleNum': 0,
+        }
+        if today_latest_collect_hour is not None:
+            today_summary_query = select(
+                func.sum(XgjRealTodayStats.pending_payment_num).label('pending_payment_num'),
+                func.sum(XgjRealTodayStats.wait_send_num).label('wait_send_num'),
+                func.sum(XgjRealTodayStats.shipped_num).label('shipped_num'),
+                func.sum(XgjRealTodayStats.pending_after_sale_num).label('pending_after_sale_num'),
+            ).where(
+                *today_filters,
+                XgjRealTodayStats.collect_date == today_query_date,
+                XgjRealTodayStats.collect_hour == today_latest_collect_hour,
+            )
+            today_row = (await db.execute(today_summary_query)).one_or_none()
+            today_stats = {
+                'pendingPaymentNum': int(round(float(getattr(today_row, 'pending_payment_num', 0) or 0))),
+                'waitSendNum': int(round(float(getattr(today_row, 'wait_send_num', 0) or 0))),
+                'shippedNum': int(round(float(getattr(today_row, 'shipped_num', 0) or 0))),
+                'pendingAfterSaleNum': int(round(float(getattr(today_row, 'pending_after_sale_num', 0) or 0))),
+            }
+
+        refund_stats = {
+            'aboutToTimeoutNum': 0,
+            'sellerPendingNum': 0,
+            'buyerPendingNum': 0,
+        }
+        if refund_latest_collect_hour is not None:
+            refund_summary_query = select(
+                func.sum(XgjRealRefundStats.about_to_timeout_num).label('about_to_timeout_num'),
+                func.sum(XgjRealRefundStats.seller_pending_num).label('seller_pending_num'),
+                func.sum(XgjRealRefundStats.buyer_pending_num).label('buyer_pending_num'),
+            ).where(
+                *refund_filters,
+                XgjRealRefundStats.collect_date == refund_query_date,
+                XgjRealRefundStats.collect_hour == refund_latest_collect_hour,
+            )
+            refund_row = (await db.execute(refund_summary_query)).one_or_none()
+            refund_stats = {
+                'aboutToTimeoutNum': int(round(float(getattr(refund_row, 'about_to_timeout_num', 0) or 0))),
+                'sellerPendingNum': int(round(float(getattr(refund_row, 'seller_pending_num', 0) or 0))),
+                'buyerPendingNum': int(round(float(getattr(refund_row, 'buyer_pending_num', 0) or 0))),
+            }
+
+        return {
+            **today_stats,
+            **refund_stats,
+            'todayLatestCollectTime': cls._build_latest_collect_time(today_query_date, today_latest_collect_hour),
+            'refundLatestCollectTime': cls._build_latest_collect_time(refund_query_date, refund_latest_collect_hour),
         }
 
     @classmethod

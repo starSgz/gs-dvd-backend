@@ -99,8 +99,9 @@ async def get_login_user_info(
     request: Request, current_user: Annotated[CurrentUserModel, CurrentUserDependency()]
 ) -> Response:
     logger.info('获取成功')
+    user_info = current_user.model_dump(by_alias=True, exclude={'user': {'password'}})
 
-    return ResponseUtil.success(model_content=current_user)
+    return ResponseUtil.success(dict_content=user_info)
 
 
 @login_controller.get(
