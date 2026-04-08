@@ -10,6 +10,22 @@ from utils.page_util import PageUtil
 
 
 class DdOverviewDao:
+    @staticmethod
+    async def _get_today_latest_collect_hour(db: AsyncSession, model, filters: Optional[list] = None):
+        """
+        获取当天最新采集小时
+        """
+        query_date = date.today()
+        latest_hour_query = select(
+            func.max(model.collect_hour).label('latest_collect_hour')
+        ).where(
+            model.collect_date == query_date
+        )
+        for condition in filters or []:
+            latest_hour_query = latest_hour_query.where(condition)
+        latest_collect_hour = (await db.execute(latest_hour_query)).scalar_one_or_none()
+        return query_date, latest_collect_hour
+
     """
     抖店数据概览模块数据库操作层
     """
@@ -58,13 +74,28 @@ class DdOverviewDao:
         :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 店铺列表
         """
-        latest_date_result = await db.execute(
-            select(func.max(DdRealOverview.collect_date))
+        base_filters = [DdRealOverview.store_name.isnot(None)]
+        if store_id:
+            base_filters.append(DdRealOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            base_filters.append(DdRealOverview.bind_user_id.in_(dvd_data_scope))
+
+        store_query = (
+            select(
+                DdRealOverview.store_name,
+                DdRealOverview.store_id
+            )
+            .distinct()
+            .where(*base_filters)
+            .order_by(DdRealOverview.store_name)
         )
-        query_date = latest_date_result.scalar()
-        
-        if query_date is None:
+        store_rows = (await db.execute(store_query)).all()
+        if not store_rows:
             return []
+
+        query_date, latest_collect_hour = await cls._get_today_latest_collect_hour(
+            db, DdRealOverview, base_filters
+        )
         
         if sort_by == 'orders':
             sort_field = func.sum(cast(DdRealOverview.pay_cnt, Integer))
@@ -76,36 +107,42 @@ class DdOverviewDao:
             DdRealOverview.store_id,
             sort_field.label('total_value')
         ).where(
+            *base_filters,
             DdRealOverview.collect_date == query_date,
-            DdRealOverview.store_name.isnot(None)
+            DdRealOverview.collect_hour == latest_collect_hour
         )
-        
-        if store_id:
-            query = query.where(DdRealOverview.store_id == store_id)
-        if dvd_data_scope is not None:
-            query = query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
-        
-        query = (
-            query.group_by(
+
+        store_value_map = {}
+        if latest_collect_hour is not None:
+            query = query.group_by(
                 DdRealOverview.store_name,
                 DdRealOverview.store_id
             )
-            .order_by(desc('total_value'))
-            .limit(limit)
-        )
-        
-        result = await db.execute(query)
-        rows = result.all()
+            result = await db.execute(query)
+            rows = result.all()
+            store_value_map = {
+                row.store_id: float(row.total_value or 0)
+                for row in rows
+            }
 
         top_stores = []
-        for row in rows:
-            today_value = float(row.total_value or 0)
+        for row in store_rows:
+            today_value = store_value_map.get(row.store_id, 0)
             top_stores.append({
                 'name': row.store_name,
                 'storeId': row.store_id,
                 'sales': round(today_value, 2) if sort_by == 'amount' else int(today_value),
+                '_sortValue': today_value,
             })
-        
+
+        top_stores = sorted(
+            top_stores,
+            key=lambda item: (-item['_sortValue'], item['name'] or '')
+        )[:limit]
+
+        for item in top_stores:
+            item.pop('_sortValue', None)
+
         return top_stores
 
     @classmethod
@@ -123,12 +160,23 @@ class DdOverviewDao:
         :param dvd_data_scope: 数据权限子查询，None 表示不过滤
         :return: 概览指标数据（含运营状态新字段）
         """
-        latest_date_result = await db.execute(
-            select(func.max(DdRealOverview.collect_date))
+        overview_filters = []
+        income_filters = []
+        if store_id:
+            overview_filters.append(DdRealOverview.store_id == store_id)
+            income_filters.append(DdRealIncomeExpenditureOverview.store_id == store_id)
+        if dvd_data_scope is not None:
+            overview_filters.append(DdRealOverview.bind_user_id.in_(dvd_data_scope))
+            income_filters.append(DdRealIncomeExpenditureOverview.bind_user_id.in_(dvd_data_scope))
+
+        overview_query_date, overview_latest_collect_hour = await cls._get_today_latest_collect_hour(
+            db, DdRealOverview, overview_filters
         )
-        query_date = latest_date_result.scalar()
-        
-        if query_date is None:
+        income_query_date, income_latest_collect_hour = await cls._get_today_latest_collect_hour(
+            db, DdRealIncomeExpenditureOverview, income_filters
+        )
+
+        if overview_latest_collect_hour is None and income_latest_collect_hour is None:
             return {
                 'payAmt': 0,
                 'payCnt': 0,
@@ -156,8 +204,8 @@ class DdOverviewDao:
                 'toBerectifiedRisk': 0,
                 'violationPending': 0,
             }
-        
-        if store_id:
+
+        if overview_latest_collect_hour is not None:
             business_query = select(
                 func.sum(cast(DdRealOverview.pay_amt, DECIMAL(20, 2))).label('pay_amt'),
                 func.sum(cast(DdRealOverview.pay_cnt, Integer)).label('pay_cnt'),
@@ -173,98 +221,83 @@ class DdOverviewDao:
                 func.avg(cast(DdRealOverview.product_click_pay_cnt_ratio, DECIMAL(10, 4))).label('product_click_pay_cnt_ratio'),
                 func.avg(cast(DdRealOverview.product_show_click_cnt_ratio, DECIMAL(10, 4))).label('product_show_click_cnt_ratio'),
             ).where(
-                DdRealOverview.collect_date == query_date,
-                DdRealOverview.store_id == store_id
+                *overview_filters,
+                DdRealOverview.collect_date == overview_query_date,
+                DdRealOverview.collect_hour == overview_latest_collect_hour,
             )
+            business_result = await db.execute(business_query)
+            business_row = business_result.first()
         else:
-            business_query = select(
-                func.sum(cast(DdRealOverview.pay_amt, DECIMAL(20, 2))).label('pay_amt'),
-                func.sum(cast(DdRealOverview.pay_cnt, Integer)).label('pay_cnt'),
-                func.sum(cast(DdRealOverview.product_show_ucnt, Integer)).label('product_show_ucnt'),
-                func.sum(cast(DdRealOverview.product_click_ucnt, Integer)).label('product_click_ucnt'),
-                func.sum(cast(DdRealOverview.pay_ucnt, Integer)).label('pay_ucnt'),
-                func.sum(cast(DdRealOverview.rfndsuc_amt, DECIMAL(20, 2))).label('rfndsuc_amt'),
-                func.sum(cast(DdRealOverview.rfndsuc_amt_pay_time, DECIMAL(20, 2))).label('rfndsuc_amt_pay_time'),
-                func.sum(cast(DdRealOverview.refund_order_cnt, Integer)).label('refund_order_cnt'),
-                func.sum(cast(DdRealOverview.refund_order_cnt_pay_time, Integer)).label('refund_order_cnt_pay_time'),
-                func.sum(cast(DdRealOverview.income_amt, DECIMAL(20, 2))).label('income_amt'),
-                func.avg(cast(DdRealOverview.per_usr_pay_amt, DECIMAL(20, 2))).label('per_usr_pay_amt'),
+            business_row = None
+        
+        if income_latest_collect_hour is not None:
+            income_query = select(
+                func.sum(DdRealIncomeExpenditureOverview.ad_cost).label('ad_cost'),
+                func.sum(DdRealIncomeExpenditureOverview.cost_amt).label('cost_amt'),
+                func.avg(DdRealIncomeExpenditureOverview.refund_amt_rate).label('refund_amt_rate'),
+                func.avg(DdRealIncomeExpenditureOverview.ad_expense_ratio_with_refund).label('ad_expense_ratio_with_refund'),
             ).where(
-                DdRealOverview.collect_date == query_date
+                *income_filters,
+                DdRealIncomeExpenditureOverview.collect_date == income_query_date,
+                DdRealIncomeExpenditureOverview.collect_hour == income_latest_collect_hour,
             )
-
-        if dvd_data_scope is not None:
-            business_query = business_query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
-        
-        business_result = await db.execute(business_query)
-        business_row = business_result.first()
-        
-        income_query = select(
-            func.sum(DdRealIncomeExpenditureOverview.ad_cost).label('ad_cost'),
-            func.sum(DdRealIncomeExpenditureOverview.cost_amt).label('cost_amt'),
-            func.avg(DdRealIncomeExpenditureOverview.refund_amt_rate).label('refund_amt_rate'),
-            func.avg(DdRealIncomeExpenditureOverview.ad_expense_ratio_with_refund).label('ad_expense_ratio_with_refund'),
-        ).where(
-            DdRealIncomeExpenditureOverview.collect_date == query_date
-        )
-        
-        if store_id:
-            income_query = income_query.where(DdRealIncomeExpenditureOverview.store_id == store_id)
-        if dvd_data_scope is not None:
-            income_query = income_query.where(DdRealIncomeExpenditureOverview.bind_user_id.in_(dvd_data_scope))
-        
-        income_result = await db.execute(income_query)
-        income_row = income_result.first()
+            income_result = await db.execute(income_query)
+            income_row = income_result.first()
+        else:
+            income_row = None
 
         # 查询 dd_real_overview 获取运营状态新字段
-        overview_query = select(
-            func.sum(cast(DdRealOverview.unpaid, Integer)).label('unpaid'),
-            func.sum(cast(DdRealOverview.unsend, Integer)).label('unsend'),
-            func.sum(cast(DdRealOverview.abnormal_package, Integer)).label('abnormal_package'),
-            func.sum(cast(DdRealOverview.unprocess, Integer)).label('unprocess'),
-            func.sum(cast(DdRealOverview.service_order, Integer)).label('service_order'),
-            func.sum(cast(DdRealOverview.to_berectified_risk, Integer)).label('to_berectified_risk'),
-            func.sum(cast(DdRealOverview.violation_pending, Integer)).label('violation_pending'),
-        ).where(
-            DdRealOverview.collect_date == query_date
-        )
-        if store_id:
-            overview_query = overview_query.where(DdRealOverview.store_id == store_id)
-        if dvd_data_scope is not None:
-            overview_query = overview_query.where(DdRealOverview.bind_user_id.in_(dvd_data_scope))
-
-        overview_result = await db.execute(overview_query)
-        overview_row = overview_result.first()
+        if overview_latest_collect_hour is not None:
+            overview_query = select(
+                func.sum(cast(DdRealOverview.unpaid, Integer)).label('unpaid'),
+                func.sum(cast(DdRealOverview.unsend, Integer)).label('unsend'),
+                func.sum(cast(DdRealOverview.abnormal_package, Integer)).label('abnormal_package'),
+                func.sum(cast(DdRealOverview.unprocess, Integer)).label('unprocess'),
+                func.sum(cast(DdRealOverview.service_order, Integer)).label('service_order'),
+                func.sum(cast(DdRealOverview.to_berectified_risk, Integer)).label('to_berectified_risk'),
+                func.sum(cast(DdRealOverview.violation_pending, Integer)).label('violation_pending'),
+            ).where(
+                *overview_filters,
+                DdRealOverview.collect_date == overview_query_date,
+                DdRealOverview.collect_hour == overview_latest_collect_hour,
+            )
+            overview_result = await db.execute(overview_query)
+            overview_row = overview_result.first()
+        else:
+            overview_row = None
         
-        pay_ucnt = float(business_row.pay_ucnt or 0)
-        product_show_ucnt = float(business_row.product_show_ucnt or 0)
+        pay_ucnt = float(business_row.pay_ucnt or 0) if business_row else 0
+        product_show_ucnt = float(business_row.product_show_ucnt or 0) if business_row else 0
         conversion_rate = round((pay_ucnt / product_show_ucnt * 100), 2) if product_show_ucnt > 0 else 0
         
-        if store_id:
+        if business_row and store_id:
             product_click_pay_cnt_ratio = round(float(business_row.product_click_pay_cnt_ratio or 0), 2)
             product_show_click_cnt_ratio = round(float(business_row.product_show_click_cnt_ratio or 0), 2)
-        else:
+        elif business_row:
             pay_cnt = float(business_row.pay_cnt or 0)
             product_click_ucnt_val = float(business_row.product_click_ucnt or 0)
             product_click_pay_cnt_ratio = round((pay_cnt / product_click_ucnt_val * 100), 2) if product_click_ucnt_val > 0 else 0
 
             product_show_ucnt_val = float(business_row.product_show_ucnt or 0)
             product_show_click_cnt_ratio = round((product_click_ucnt_val / product_show_ucnt_val * 100), 2) if product_show_ucnt_val > 0 else 0
+        else:
+            product_click_pay_cnt_ratio = 0
+            product_show_click_cnt_ratio = 0
         
         return {
             # 交易核心指标
-            'payAmt': round(float(business_row.pay_amt or 0), 2),
-            'payCnt': int(business_row.pay_cnt or 0),
-            'incomeAmt': round(float(business_row.income_amt or 0), 2),
-            'perUsrPayAmt': round(float(business_row.per_usr_pay_amt or 0), 2),
-            'productShowUcnt': int(business_row.product_show_ucnt or 0),
-            'productClickUcnt': int(business_row.product_click_ucnt or 0),
-            'payUcnt': int(business_row.pay_ucnt or 0),
+            'payAmt': round(float(business_row.pay_amt or 0), 2) if business_row else 0,
+            'payCnt': int(business_row.pay_cnt or 0) if business_row else 0,
+            'incomeAmt': round(float(business_row.income_amt or 0), 2) if business_row else 0,
+            'perUsrPayAmt': round(float(business_row.per_usr_pay_amt or 0), 2) if business_row else 0,
+            'productShowUcnt': int(business_row.product_show_ucnt or 0) if business_row else 0,
+            'productClickUcnt': int(business_row.product_click_ucnt or 0) if business_row else 0,
+            'payUcnt': int(business_row.pay_ucnt or 0) if business_row else 0,
             # 退款指标
-            'rfndsucAmt': round(float(business_row.rfndsuc_amt or 0), 2),
-            'rfndsucAmtPayTime': round(float(business_row.rfndsuc_amt_pay_time or 0), 2),
-            'refundOrderCnt': int(business_row.refund_order_cnt or 0),
-            'refundOrderCntPayTime': int(business_row.refund_order_cnt_pay_time or 0),
+            'rfndsucAmt': round(float(business_row.rfndsuc_amt or 0), 2) if business_row else 0,
+            'rfndsucAmtPayTime': round(float(business_row.rfndsuc_amt_pay_time or 0), 2) if business_row else 0,
+            'refundOrderCnt': int(business_row.refund_order_cnt or 0) if business_row else 0,
+            'refundOrderCntPayTime': int(business_row.refund_order_cnt_pay_time or 0) if business_row else 0,
             # 收支指标
             'adCost': round(float(income_row.ad_cost or 0), 2) if income_row else 0,
             'costAmt': round(float(income_row.cost_amt or 0), 2) if income_row else 0,
